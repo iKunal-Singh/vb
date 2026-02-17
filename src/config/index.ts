@@ -1,47 +1,35 @@
 /**
  * QuickRupee Voice Bot — Centralized Configuration
- *
- * Loads all environment variables at startup, validates required values,
- * and exports a frozen, typed config object.
- *
- * Voice profiles are defined here to support runtime accent switching
- * via the VOICE_PROFILE environment variable.
  */
 
 import dotenv from 'dotenv';
-import type { AppConfig, VoiceProfile } from '../types/index.js';
+import type { AppConfig, TransportMode, VoiceProfile } from '../types/index.js';
 
 dotenv.config();
 
-// ─── Voice Profile Registry ────────────────────────────────────
-// Each profile maps to an ElevenLabs voice ID with tuned parameters.
-// Add new profiles here; select at runtime via VOICE_PROFILE env var.
-
 const VOICE_PROFILES: Readonly<Record<string, VoiceProfile>> = {
     indian_warm: {
-        voiceId: 'pNInz6obpgDQGcFmaJgB',    // ElevenLabs "Adam" — warm Indian English
+        voiceId: 'pNInz6obpgDQGcFmaJgB',
         accent: 'indian-english',
         gender: 'male',
         stability: 0.7,
         similarityBoost: 0.8,
     },
     indian_female: {
-        voiceId: 'EXAVITQu4vr4xnSDxMaL',    // ElevenLabs "Bella" — warm female
+        voiceId: 'EXAVITQu4vr4xnSDxMaL',
         accent: 'indian-english',
         gender: 'female',
         stability: 0.8,
         similarityBoost: 0.75,
     },
     us_professional: {
-        voiceId: '21m00Tcm4TlvDq8ikWAM',     // ElevenLabs "Rachel" — US professional
+        voiceId: '21m00Tcm4TlvDq8ikWAM',
         accent: 'neutral-english',
         gender: 'female',
         stability: 0.75,
         similarityBoost: 0.8,
     },
 } as const;
-
-// ─── Helper ────────────────────────────────────────────────────
 
 function requireEnv(key: string): string {
     const value = process.env[key];
@@ -81,11 +69,16 @@ function optionalBool(key: string, fallback: boolean): boolean {
     return raw === 'true' || raw === '1';
 }
 
-// ─── Build Config ──────────────────────────────────────────────
+function optionalTransportMode(): TransportMode {
+    const raw = optionalEnv('TRANSPORT_MODE', 'local');
+    if (raw !== 'local' && raw !== 'twilio') {
+        throw new Error(`TRANSPORT_MODE must be "local" or "twilio", got: ${raw}`);
+    }
+    return raw;
+}
 
 function buildAnthropicConfig(): AppConfig['anthropic'] {
     const apiKey = process.env['ANTHROPIC_API_KEY'];
-    // Skip if not set or still a placeholder
     if (!apiKey || apiKey.startsWith('sk-ant-xxxx')) {
         return undefined;
     }
@@ -96,18 +89,23 @@ function buildAnthropicConfig(): AppConfig['anthropic'] {
 }
 
 function buildConfig(): AppConfig {
+    const transportMode = optionalTransportMode();
+
     return Object.freeze({
         port: optionalInt('PORT', 3000),
         host: optionalEnv('HOST', '0.0.0.0'),
         nodeEnv: optionalEnv('NODE_ENV', 'development'),
         logLevel: optionalEnv('LOG_LEVEL', 'info'),
-        publicUrl: requireEnv('PUBLIC_URL'),
+        transportMode,
+        publicUrl: transportMode === 'twilio' ? requireEnv('PUBLIC_URL') : optionalEnv('PUBLIC_URL', ''),
 
-        twilio: Object.freeze({
-            accountSid: requireEnv('TWILIO_ACCOUNT_SID'),
-            authToken: requireEnv('TWILIO_AUTH_TOKEN'),
-            phoneNumber: requireEnv('TWILIO_PHONE_NUMBER'),
-        }),
+        twilio: transportMode === 'twilio'
+            ? Object.freeze({
+                accountSid: requireEnv('TWILIO_ACCOUNT_SID'),
+                authToken: requireEnv('TWILIO_AUTH_TOKEN'),
+                phoneNumber: requireEnv('TWILIO_PHONE_NUMBER'),
+            })
+            : null,
 
         deepgram: Object.freeze({
             apiKey: requireEnv('DEEPGRAM_API_KEY'),
@@ -130,20 +128,12 @@ function buildConfig(): AppConfig {
     });
 }
 
-// ─── Exports ───────────────────────────────────────────────────
-
-/** Immutable application configuration. Throws on missing required env vars. */
 export const config: AppConfig = buildConfig();
 
-/**
- * Resolve the active voice profile based on the VOICE_PROFILE env var.
- * Falls back to `indian_warm` if the specified profile does not exist.
- */
 export function getActiveVoiceProfile(): VoiceProfile {
     const profile = VOICE_PROFILES[config.voiceProfile];
     if (!profile) {
-        // Fallback to default rather than crashing — log a warning at call site
-        const fallback = VOICE_PROFILES['indian_warm'];
+        const fallback = VOICE_PROFILES.indian_warm;
         if (!fallback) {
             throw new Error('Default voice profile "indian_warm" is missing from registry');
         }
@@ -152,12 +142,10 @@ export function getActiveVoiceProfile(): VoiceProfile {
     return profile;
 }
 
-/** Get all available voice profile names */
 export function getAvailableProfiles(): string[] {
     return Object.keys(VOICE_PROFILES);
 }
 
-/** Whether the Claude LLM worker is enabled (has a valid API key) */
 export function isLlmEnabled(): boolean {
     return config.anthropic !== undefined;
 }

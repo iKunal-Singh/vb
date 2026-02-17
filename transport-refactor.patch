@@ -1,0 +1,2559 @@
+diff --git a/.env.example b/.env.example
+index 1c03b3e5f1b3a6b6a96916eb32c4eac78824f30e..700226a7eb49b83c9b9d706dceceee3b0104bacc 100644
+--- a/.env.example
++++ b/.env.example
+@@ -1,46 +1,51 @@
+ # ─────────────────────────────────────────────
+ # QuickRupee Voice Bot — Environment Variables
+ # ─────────────────────────────────────────────
+ 
+ # Server
+ NODE_ENV=development
+ PORT=3000
+ LOG_LEVEL=info
+ HOST=0.0.0.0
+ 
+-# ─── Twilio ──────────────────────────────────
++# Transport mode: local | twilio
++# local => browser microphone harness at /dev
++# twilio => Twilio Media Streams routes (/twiml, /media-stream)
++TRANSPORT_MODE=local
++
++# ─── Twilio (required only when TRANSPORT_MODE=twilio) ─────────
+ TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ TWILIO_AUTH_TOKEN=your_auth_token_here
+ TWILIO_PHONE_NUMBER=+91xxxxxxxxxx
+ # Public URL for Twilio webhooks (ngrok for dev)
+-# Run `ngrok http 3000` and paste the HTTPS URL here
+-PUBLIC_URL=https://your-ngrok-url.ngrok-free.app
++PUBLIC_URL=
++# Leave PUBLIC_URL empty in local mode; set it only for Twilio mode.
+ 
+ # ─── Deepgram (STT) ─────────────────────────
+ DEEPGRAM_API_KEY=your_deepgram_api_key_here
+ DEEPGRAM_MODEL=nova-2
+ DEEPGRAM_LANGUAGE=en-IN
+-# Endpointing in ms (lower = faster end-of-speech detection, may cut off speech)
+ DEEPGRAM_ENDPOINTING_MS=200
+-# Minimum confidence threshold for accepting transcripts
+ STT_CONFIDENCE_THRESHOLD=0.7
+ 
+ # ─── ElevenLabs (TTS) ───────────────────────
+ ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
+ ELEVENLABS_MODEL=eleven_turbo_v2_5
+ 
+ # Voice profile: "indian_warm" | "indian_female" | "us_professional"
+ VOICE_PROFILE=indian_warm
+ 
+ # ─── Claude / Anthropic (Post-Call LLM) ─────
+ # OPTIONAL: Leave blank or comment out to disable post-call LLM notes.
+-# The call flow works fully without this.
+ # ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ # CLAUDE_MODEL=claude-sonnet-4-20250514
+ 
+ # ─── Metrics ─────────────────────────────────
+ METRICS_ENABLED=true
+ 
+ # ─── Region & Deployment ────────────────────
+-# AWS ap-south-1 (Mumbai) recommended for lowest latency to Twilio Mumbai
+ AWS_REGION=ap-south-1
++
++
++# Local harness URL (when TRANSPORT_MODE=local)
++DEV_URL=http://localhost:3000/dev
+diff --git a/package-lock.json b/package-lock.json
+index 6671a873b4d64fbf0f5938a2a79ab254f0483452..ab949ec638d18866e4dff30fedb24d94d175ea6c 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,49 +1,50 @@
+ {
+   "name": "quickrupee-voice-bot",
+   "version": "1.0.0",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "quickrupee-voice-bot",
+       "version": "1.0.0",
+       "dependencies": {
+         "@anthropic-ai/sdk": "^0.39.0",
+         "@deepgram/sdk": "^3.9.0",
+-        "@fastify/websocket": "^10.0.1",
++        "@fastify/websocket": "^11.2.0",
+         "dotenv": "^16.4.7",
+         "fastest-levenshtein": "^1.0.16",
+         "fastify": "^5.2.1",
+         "pino": "^9.6.0",
+         "prom-client": "^15.1.3",
+         "twilio": "^5.4.4",
+         "ws": "^8.18.0"
+       },
+       "devDependencies": {
+         "@types/node": "^22.13.0",
+         "@types/ws": "^8.5.14",
++        "pino-pretty": "^13.1.3",
+         "ts-node-dev": "^2.0.0",
+         "tsx": "^4.19.2",
+         "typescript": "^5.7.3"
+       },
+       "engines": {
+         "node": ">=20.0.0"
+       }
+     },
+     "node_modules/@anthropic-ai/sdk": {
+       "version": "0.39.0",
+       "resolved": "https://registry.npmjs.org/@anthropic-ai/sdk/-/sdk-0.39.0.tgz",
+       "integrity": "sha512-eMyDIPRZbt1CCLErRCi3exlAvNkBtRe+kW5vvJyef93PmNr/clstYgHhtvmkxN82nlKgzyGPCyGxrm0JQ1ZIdg==",
+       "license": "MIT",
+       "dependencies": {
+         "@types/node": "^18.11.18",
+         "@types/node-fetch": "^2.6.4",
+         "abort-controller": "^3.0.0",
+         "agentkeepalive": "^4.2.1",
+         "form-data-encoder": "1.7.2",
+         "formdata-node": "^4.3.2",
+         "node-fetch": "^2.6.7"
+       }
+     },
+     "node_modules/@anthropic-ai/sdk/node_modules/@types/node": {
+       "version": "18.19.130",
+@@ -649,58 +650,68 @@
+       "dependencies": {
+         "dequal": "^2.0.3"
+       }
+     },
+     "node_modules/@fastify/proxy-addr": {
+       "version": "5.1.0",
+       "resolved": "https://registry.npmjs.org/@fastify/proxy-addr/-/proxy-addr-5.1.0.tgz",
+       "integrity": "sha512-INS+6gh91cLUjB+PVHfu1UqcB76Sqtpyp7bnL+FYojhjygvOPA9ctiD/JDKsyD9Xgu4hUhCSJBPig/w7duNajw==",
+       "funding": [
+         {
+           "type": "github",
+           "url": "https://github.com/sponsors/fastify"
+         },
+         {
+           "type": "opencollective",
+           "url": "https://opencollective.com/fastify"
+         }
+       ],
+       "license": "MIT",
+       "dependencies": {
+         "@fastify/forwarded": "^3.0.0",
+         "ipaddr.js": "^2.1.0"
+       }
+     },
+     "node_modules/@fastify/websocket": {
+-      "version": "10.0.1",
+-      "resolved": "https://registry.npmjs.org/@fastify/websocket/-/websocket-10.0.1.tgz",
+-      "integrity": "sha512-8/pQIxTPRD8U94aILTeJ+2O3el/r19+Ej5z1O1mXlqplsUH7KzCjAI0sgd5DM/NoPjAi5qLFNIjgM5+9/rGSNw==",
++      "version": "11.2.0",
++      "resolved": "https://registry.npmjs.org/@fastify/websocket/-/websocket-11.2.0.tgz",
++      "integrity": "sha512-3HrDPbAG1CzUCqnslgJxppvzaAZffieOVbLp1DAy1huCSynUWPifSvfdEDUR8HlJLp3sp1A36uOM2tJogADS8w==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
+       "license": "MIT",
+       "dependencies": {
+-        "duplexify": "^4.1.2",
+-        "fastify-plugin": "^4.0.0",
+-        "ws": "^8.0.0"
++        "duplexify": "^4.1.3",
++        "fastify-plugin": "^5.0.0",
++        "ws": "^8.16.0"
+       }
+     },
+     "node_modules/@jridgewell/resolve-uri": {
+       "version": "3.1.2",
+       "resolved": "https://registry.npmjs.org/@jridgewell/resolve-uri/-/resolve-uri-3.1.2.tgz",
+       "integrity": "sha512-bRISgCIjP20/tbWSPWMEi54QVPRZExkuD9lJL+UIxUKtwVJA8wW1Trb1jMs1RFXo1CBTNZ/5hpC9QvmKWdopKw==",
+       "dev": true,
+       "license": "MIT",
+       "engines": {
+         "node": ">=6.0.0"
+       }
+     },
+     "node_modules/@jridgewell/sourcemap-codec": {
+       "version": "1.5.5",
+       "resolved": "https://registry.npmjs.org/@jridgewell/sourcemap-codec/-/sourcemap-codec-1.5.5.tgz",
+       "integrity": "sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==",
+       "dev": true,
+       "license": "MIT"
+     },
+     "node_modules/@jridgewell/trace-mapping": {
+       "version": "0.3.9",
+       "resolved": "https://registry.npmjs.org/@jridgewell/trace-mapping/-/trace-mapping-0.3.9.tgz",
+       "integrity": "sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==",
+       "dev": true,
+       "license": "MIT",
+@@ -1058,98 +1069,115 @@
+     "node_modules/chokidar": {
+       "version": "3.6.0",
+       "resolved": "https://registry.npmjs.org/chokidar/-/chokidar-3.6.0.tgz",
+       "integrity": "sha512-7VT13fmjotKpGipCW9JEQAusEPE+Ei8nl6/g4FBAmIm0GOOLMua9NDDo/DWp0ZAxCr3cPq5ZpBqmPAQgDda2Pw==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+         "anymatch": "~3.1.2",
+         "braces": "~3.0.2",
+         "glob-parent": "~5.1.2",
+         "is-binary-path": "~2.1.0",
+         "is-glob": "~4.0.1",
+         "normalize-path": "~3.0.0",
+         "readdirp": "~3.6.0"
+       },
+       "engines": {
+         "node": ">= 8.10.0"
+       },
+       "funding": {
+         "url": "https://paulmillr.com/funding/"
+       },
+       "optionalDependencies": {
+         "fsevents": "~2.3.2"
+       }
+     },
++    "node_modules/colorette": {
++      "version": "2.0.20",
++      "resolved": "https://registry.npmjs.org/colorette/-/colorette-2.0.20.tgz",
++      "integrity": "sha512-IfEDxwoWIjkeXL1eXcDiow4UbKjhLdq6/EuSVR9GMN7KVH3r9gQ83e73hsz1Nd1T3ijd5xv1wcWRYO+D6kCI2w==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/combined-stream": {
+       "version": "1.0.8",
+       "resolved": "https://registry.npmjs.org/combined-stream/-/combined-stream-1.0.8.tgz",
+       "integrity": "sha512-FQN4MRfuJeHf7cBbBMJFXhKSDq+2kAArBlmRBvcvFE5BB1HZKXtSFASDhdlz9zOYwxh8lDdnvmMOe/+5cdoEdg==",
+       "license": "MIT",
+       "dependencies": {
+         "delayed-stream": "~1.0.0"
+       },
+       "engines": {
+         "node": ">= 0.8"
+       }
+     },
+     "node_modules/concat-map": {
+       "version": "0.0.1",
+       "resolved": "https://registry.npmjs.org/concat-map/-/concat-map-0.0.1.tgz",
+       "integrity": "sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==",
+       "dev": true,
+       "license": "MIT"
+     },
+     "node_modules/cookie": {
+       "version": "1.1.1",
+       "resolved": "https://registry.npmjs.org/cookie/-/cookie-1.1.1.tgz",
+       "integrity": "sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ==",
+       "license": "MIT",
+       "engines": {
+         "node": ">=18"
+       },
+       "funding": {
+         "type": "opencollective",
+         "url": "https://opencollective.com/express"
+       }
+     },
+     "node_modules/create-require": {
+       "version": "1.1.1",
+       "resolved": "https://registry.npmjs.org/create-require/-/create-require-1.1.1.tgz",
+       "integrity": "sha512-dcKFX3jn0MpIaXjisoRvexIJVEKzaq7z2rZKxf+MSr9TkdmHmsU4m2lcLojrj/FHl8mk5VxMmYA+ftRkP/3oKQ==",
+       "dev": true,
+       "license": "MIT"
+     },
+     "node_modules/cross-fetch": {
+       "version": "3.2.0",
+       "resolved": "https://registry.npmjs.org/cross-fetch/-/cross-fetch-3.2.0.tgz",
+       "integrity": "sha512-Q+xVJLoGOeIMXZmbUK4HYk+69cQH6LudR0Vu/pRm2YlU/hDV9CiS0gKUMaWY5f2NeUH9C1nV3bsTlCo0FsTV1Q==",
+       "license": "MIT",
+       "dependencies": {
+         "node-fetch": "^2.7.0"
+       }
+     },
++    "node_modules/dateformat": {
++      "version": "4.6.3",
++      "resolved": "https://registry.npmjs.org/dateformat/-/dateformat-4.6.3.tgz",
++      "integrity": "sha512-2P0p0pFGzHS5EMnhdxQi7aJN+iMheud0UhG4dlE1DLAlvL8JHjJJTX/CSm4JXwV0Ka5nGk3zC5mcb5bUQUxxMA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": "*"
++      }
++    },
+     "node_modules/dayjs": {
+       "version": "1.11.19",
+       "resolved": "https://registry.npmjs.org/dayjs/-/dayjs-1.11.19.tgz",
+       "integrity": "sha512-t5EcLVS6QPBNqM2z8fakk/NKel+Xzshgt8FFKAn+qwlD1pzZWxh0nVCrvFK7ZDb6XucZeF9z8C7CBWTRIVApAw==",
+       "license": "MIT"
+     },
+     "node_modules/debug": {
+       "version": "4.4.3",
+       "resolved": "https://registry.npmjs.org/debug/-/debug-4.4.3.tgz",
+       "integrity": "sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==",
+       "license": "MIT",
+       "dependencies": {
+         "ms": "^2.1.3"
+       },
+       "engines": {
+         "node": ">=6.0"
+       },
+       "peerDependenciesMeta": {
+         "supports-color": {
+           "optional": true
+         }
+       }
+     },
+     "node_modules/deepmerge": {
+       "version": "4.3.1",
+@@ -1337,95 +1365,109 @@
+         "@esbuild/openharmony-arm64": "0.27.3",
+         "@esbuild/sunos-x64": "0.27.3",
+         "@esbuild/win32-arm64": "0.27.3",
+         "@esbuild/win32-ia32": "0.27.3",
+         "@esbuild/win32-x64": "0.27.3"
+       }
+     },
+     "node_modules/event-target-shim": {
+       "version": "5.0.1",
+       "resolved": "https://registry.npmjs.org/event-target-shim/-/event-target-shim-5.0.1.tgz",
+       "integrity": "sha512-i/2XbnSz/uxRCU6+NdVJgKWDTM427+MqYbkQzD321DuCQJUqOuJKIA0IM2+W2xtYHdKOmZ4dR6fExsd4SXL+WQ==",
+       "license": "MIT",
+       "engines": {
+         "node": ">=6"
+       }
+     },
+     "node_modules/events": {
+       "version": "3.3.0",
+       "resolved": "https://registry.npmjs.org/events/-/events-3.3.0.tgz",
+       "integrity": "sha512-mQw+2fkQbALzQ7V0MY0IqdnXNOeTtP4r0lN9z7AAawCXgqea7bDii20AYrIBrFd/Hx0M2Ocz6S111CaFkUcb0Q==",
+       "license": "MIT",
+       "engines": {
+         "node": ">=0.8.x"
+       }
+     },
++    "node_modules/fast-copy": {
++      "version": "4.0.2",
++      "resolved": "https://registry.npmjs.org/fast-copy/-/fast-copy-4.0.2.tgz",
++      "integrity": "sha512-ybA6PDXIXOXivLJK/z9e+Otk7ve13I4ckBvGO5I2RRmBU1gMHLVDJYEuJYhGwez7YNlYji2M2DvVU+a9mSFDlw==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/fast-decode-uri-component": {
+       "version": "1.0.1",
+       "resolved": "https://registry.npmjs.org/fast-decode-uri-component/-/fast-decode-uri-component-1.0.1.tgz",
+       "integrity": "sha512-WKgKWg5eUxvRZGwW8FvfbaH7AXSh2cL+3j5fMGzUMCxWBJ3dV3a7Wz8y2f/uQ0e3B6WmodD3oS54jTQ9HVTIIg==",
+       "license": "MIT"
+     },
+     "node_modules/fast-deep-equal": {
+       "version": "3.1.3",
+       "resolved": "https://registry.npmjs.org/fast-deep-equal/-/fast-deep-equal-3.1.3.tgz",
+       "integrity": "sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==",
+       "license": "MIT"
+     },
+     "node_modules/fast-json-stringify": {
+       "version": "6.3.0",
+       "resolved": "https://registry.npmjs.org/fast-json-stringify/-/fast-json-stringify-6.3.0.tgz",
+       "integrity": "sha512-oRCntNDY/329HJPlmdNLIdogNtt6Vyjb1WuT01Soss3slIdyUp8kAcDU3saQTOquEK8KFVfwIIF7FebxUAu+yA==",
+       "funding": [
+         {
+           "type": "github",
+           "url": "https://github.com/sponsors/fastify"
+         },
+         {
+           "type": "opencollective",
+           "url": "https://opencollective.com/fastify"
+         }
+       ],
+       "license": "MIT",
+       "dependencies": {
+         "@fastify/merge-json-schemas": "^0.2.0",
+         "ajv": "^8.12.0",
+         "ajv-formats": "^3.0.1",
+         "fast-uri": "^3.0.0",
+         "json-schema-ref-resolver": "^3.0.0",
+         "rfdc": "^1.2.0"
+       }
+     },
+     "node_modules/fast-querystring": {
+       "version": "1.1.2",
+       "resolved": "https://registry.npmjs.org/fast-querystring/-/fast-querystring-1.1.2.tgz",
+       "integrity": "sha512-g6KuKWmFXc0fID8WWH0jit4g0AGBoJhCkJMb1RmbsSEUNvQ+ZC8D6CUZ+GtF8nMzSPXnhiePyyqqipzNNEnHjg==",
+       "license": "MIT",
+       "dependencies": {
+         "fast-decode-uri-component": "^1.0.1"
+       }
+     },
++    "node_modules/fast-safe-stringify": {
++      "version": "2.1.1",
++      "resolved": "https://registry.npmjs.org/fast-safe-stringify/-/fast-safe-stringify-2.1.1.tgz",
++      "integrity": "sha512-W+KJc2dmILlPplD/H4K9l9LcAHAfPtP6BY84uVLXQ6Evcz9Lcg33Y2z1IVblT6xdY54PXYVHEv+0Wpq8Io6zkA==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/fast-uri": {
+       "version": "3.1.0",
+       "resolved": "https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.0.tgz",
+       "integrity": "sha512-iPeeDKJSWf4IEOasVVrknXpaBV0IApz/gp7S2bb7Z4Lljbl2MGJRqInZiUrQwV16cpzw/D3S5j5Julj/gT52AA==",
+       "funding": [
+         {
+           "type": "github",
+           "url": "https://github.com/sponsors/fastify"
+         },
+         {
+           "type": "opencollective",
+           "url": "https://opencollective.com/fastify"
+         }
+       ],
+       "license": "BSD-3-Clause"
+     },
+     "node_modules/fastest-levenshtein": {
+       "version": "1.0.16",
+       "resolved": "https://registry.npmjs.org/fastest-levenshtein/-/fastest-levenshtein-1.0.16.tgz",
+       "integrity": "sha512-eRnCtTTtGZFpQCwhJiUOuxPQWRXVKYDn0b2PeHfXL6/Zi53SLAzAHfVhVWK2AryC/WH05kGfxhFIPvTF0SXQzg==",
+       "license": "MIT",
+       "engines": {
+         "node": ">= 4.9.1"
+       }
+     },
+@@ -1441,53 +1483,63 @@
+         {
+           "type": "opencollective",
+           "url": "https://opencollective.com/fastify"
+         }
+       ],
+       "license": "MIT",
+       "dependencies": {
+         "@fastify/ajv-compiler": "^4.0.5",
+         "@fastify/error": "^4.0.0",
+         "@fastify/fast-json-stringify-compiler": "^5.0.0",
+         "@fastify/proxy-addr": "^5.0.0",
+         "abstract-logging": "^2.0.1",
+         "avvio": "^9.0.0",
+         "fast-json-stringify": "^6.0.0",
+         "find-my-way": "^9.0.0",
+         "light-my-request": "^6.0.0",
+         "pino": "^10.1.0",
+         "process-warning": "^5.0.0",
+         "rfdc": "^1.3.1",
+         "secure-json-parse": "^4.0.0",
+         "semver": "^7.6.0",
+         "toad-cache": "^3.7.0"
+       }
+     },
+     "node_modules/fastify-plugin": {
+-      "version": "4.5.1",
+-      "resolved": "https://registry.npmjs.org/fastify-plugin/-/fastify-plugin-4.5.1.tgz",
+-      "integrity": "sha512-stRHYGeuqpEZTL1Ef0Ovr2ltazUT9g844X5z/zEBFLG8RYlpDiOCIG+ATvYEp+/zmc7sN29mcIMp8gvYplYPIQ==",
++      "version": "5.1.0",
++      "resolved": "https://registry.npmjs.org/fastify-plugin/-/fastify-plugin-5.1.0.tgz",
++      "integrity": "sha512-FAIDA8eovSt5qcDgcBvDuX/v0Cjz0ohGhENZ/wpc3y+oZCY2afZ9Baqql3g/lC+OHRnciQol4ww7tuthOb9idw==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
+       "license": "MIT"
+     },
+     "node_modules/fastify/node_modules/pino": {
+       "version": "10.3.1",
+       "resolved": "https://registry.npmjs.org/pino/-/pino-10.3.1.tgz",
+       "integrity": "sha512-r34yH/GlQpKZbU1BvFFqOjhISRo1MNx1tWYsYvmj6KIRHSPMT2+yHOEb1SG6NMvRoHRF0a07kCOox/9yakl1vg==",
+       "license": "MIT",
+       "dependencies": {
+         "@pinojs/redact": "^0.4.0",
+         "atomic-sleep": "^1.0.0",
+         "on-exit-leak-free": "^2.1.0",
+         "pino-abstract-transport": "^3.0.0",
+         "pino-std-serializers": "^7.0.0",
+         "process-warning": "^5.0.0",
+         "quick-format-unescaped": "^4.0.3",
+         "real-require": "^0.2.0",
+         "safe-stable-stringify": "^2.3.1",
+         "sonic-boom": "^4.0.1",
+         "thread-stream": "^4.0.0"
+       },
+       "bin": {
+         "pino": "bin.js"
+       }
+     },
+     "node_modules/fastify/node_modules/pino-abstract-transport": {
+@@ -1747,50 +1799,57 @@
+       "resolved": "https://registry.npmjs.org/has-tostringtag/-/has-tostringtag-1.0.2.tgz",
+       "integrity": "sha512-NqADB8VjPFLM2V0VvHUewwwsw0ZWBaIdgo+ieHtK3hasLz4qeCRjYcqfB6AQrBggRKppKF8L52/VqdVsO47Dlw==",
+       "license": "MIT",
+       "dependencies": {
+         "has-symbols": "^1.0.3"
+       },
+       "engines": {
+         "node": ">= 0.4"
+       },
+       "funding": {
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
+     "node_modules/hasown": {
+       "version": "2.0.2",
+       "resolved": "https://registry.npmjs.org/hasown/-/hasown-2.0.2.tgz",
+       "integrity": "sha512-0hJU9SCPvmMzIBdZFqNPXWa6dqh7WdH0cII9y+CyS8rG3nL48Bclra9HmKhVVUHyPWNH5Y7xDwAB7bfgSjkUMQ==",
+       "license": "MIT",
+       "dependencies": {
+         "function-bind": "^1.1.2"
+       },
+       "engines": {
+         "node": ">= 0.4"
+       }
+     },
++    "node_modules/help-me": {
++      "version": "5.0.0",
++      "resolved": "https://registry.npmjs.org/help-me/-/help-me-5.0.0.tgz",
++      "integrity": "sha512-7xgomUX6ADmcYzFik0HzAxh/73YlKR9bmFzf51CZwR+b6YtzU2m0u49hQCqV6SvlqIqsaxovfwdvbnsw3b/zpg==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/https-proxy-agent": {
+       "version": "5.0.1",
+       "resolved": "https://registry.npmjs.org/https-proxy-agent/-/https-proxy-agent-5.0.1.tgz",
+       "integrity": "sha512-dFcAjpTQFgoLMzC2VwU+C/CbS7uRL0lWmxDITmqm7C+7F0Odmj6s9l6alZc6AELXhrnggM2CeWSXHGOdX2YtwA==",
+       "license": "MIT",
+       "dependencies": {
+         "agent-base": "6",
+         "debug": "4"
+       },
+       "engines": {
+         "node": ">= 6"
+       }
+     },
+     "node_modules/humanize-ms": {
+       "version": "1.2.1",
+       "resolved": "https://registry.npmjs.org/humanize-ms/-/humanize-ms-1.2.1.tgz",
+       "integrity": "sha512-Fl70vYtsAFb/C06PTS9dZBo7ihau+Tu/DNCk/OyHhea07S+aeMWpFFkUaXRa8fI+ScZbEI8dfSxwY7gxZ9SAVQ==",
+       "license": "MIT",
+       "dependencies": {
+         "ms": "^2.0.0"
+       }
+     },
+     "node_modules/inflight": {
+       "version": "1.0.6",
+       "resolved": "https://registry.npmjs.org/inflight/-/inflight-1.0.6.tgz",
+@@ -1858,50 +1917,60 @@
+       }
+     },
+     "node_modules/is-glob": {
+       "version": "4.0.3",
+       "resolved": "https://registry.npmjs.org/is-glob/-/is-glob-4.0.3.tgz",
+       "integrity": "sha512-xelSayHH36ZgE7ZWhli7pW34hNbNl8Ojv5KVmkJD4hBdD3th8Tfk9vYasLM+mXWOZhFkgZfxhLSnrwRr4elSSg==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+         "is-extglob": "^2.1.1"
+       },
+       "engines": {
+         "node": ">=0.10.0"
+       }
+     },
+     "node_modules/is-number": {
+       "version": "7.0.0",
+       "resolved": "https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz",
+       "integrity": "sha512-41Cifkg6e8TylSpdtTpeLVMqvSBEVzTttHvERD741+pnZ8ANv0004MRL43QKPDlK9cGvNp6NZWZUBlbGXYxxng==",
+       "dev": true,
+       "license": "MIT",
+       "engines": {
+         "node": ">=0.12.0"
+       }
+     },
++    "node_modules/joycon": {
++      "version": "3.1.1",
++      "resolved": "https://registry.npmjs.org/joycon/-/joycon-3.1.1.tgz",
++      "integrity": "sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=10"
++      }
++    },
+     "node_modules/json-schema-ref-resolver": {
+       "version": "3.0.0",
+       "resolved": "https://registry.npmjs.org/json-schema-ref-resolver/-/json-schema-ref-resolver-3.0.0.tgz",
+       "integrity": "sha512-hOrZIVL5jyYFjzk7+y7n5JDzGlU8rfWDuYyHwGa2WA8/pcmMHezp2xsVwxrebD/Q9t8Nc5DboieySDpCp4WG4A==",
+       "funding": [
+         {
+           "type": "github",
+           "url": "https://github.com/sponsors/fastify"
+         },
+         {
+           "type": "opencollective",
+           "url": "https://opencollective.com/fastify"
+         }
+       ],
+       "license": "MIT",
+       "dependencies": {
+         "dequal": "^2.0.3"
+       }
+     },
+     "node_modules/json-schema-traverse": {
+       "version": "1.0.0",
+       "resolved": "https://registry.npmjs.org/json-schema-traverse/-/json-schema-traverse-1.0.0.tgz",
+       "integrity": "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==",
+       "license": "MIT"
+     },
+@@ -2225,91 +2294,150 @@
+         "@pinojs/redact": "^0.4.0",
+         "atomic-sleep": "^1.0.0",
+         "on-exit-leak-free": "^2.1.0",
+         "pino-abstract-transport": "^2.0.0",
+         "pino-std-serializers": "^7.0.0",
+         "process-warning": "^5.0.0",
+         "quick-format-unescaped": "^4.0.3",
+         "real-require": "^0.2.0",
+         "safe-stable-stringify": "^2.3.1",
+         "sonic-boom": "^4.0.1",
+         "thread-stream": "^3.0.0"
+       },
+       "bin": {
+         "pino": "bin.js"
+       }
+     },
+     "node_modules/pino-abstract-transport": {
+       "version": "2.0.0",
+       "resolved": "https://registry.npmjs.org/pino-abstract-transport/-/pino-abstract-transport-2.0.0.tgz",
+       "integrity": "sha512-F63x5tizV6WCh4R6RHyi2Ml+M70DNRXt/+HANowMflpgGFMAym/VKm6G7ZOQRjqN7XbGxK1Lg9t6ZrtzOaivMw==",
+       "license": "MIT",
+       "dependencies": {
+         "split2": "^4.0.0"
+       }
+     },
++    "node_modules/pino-pretty": {
++      "version": "13.1.3",
++      "resolved": "https://registry.npmjs.org/pino-pretty/-/pino-pretty-13.1.3.tgz",
++      "integrity": "sha512-ttXRkkOz6WWC95KeY9+xxWL6AtImwbyMHrL1mSwqwW9u+vLp/WIElvHvCSDg0xO/Dzrggz1zv3rN5ovTRVowKg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "colorette": "^2.0.7",
++        "dateformat": "^4.6.3",
++        "fast-copy": "^4.0.0",
++        "fast-safe-stringify": "^2.1.1",
++        "help-me": "^5.0.0",
++        "joycon": "^3.1.1",
++        "minimist": "^1.2.6",
++        "on-exit-leak-free": "^2.1.0",
++        "pino-abstract-transport": "^3.0.0",
++        "pump": "^3.0.0",
++        "secure-json-parse": "^4.0.0",
++        "sonic-boom": "^4.0.1",
++        "strip-json-comments": "^5.0.2"
++      },
++      "bin": {
++        "pino-pretty": "bin.js"
++      }
++    },
++    "node_modules/pino-pretty/node_modules/pino-abstract-transport": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmjs.org/pino-abstract-transport/-/pino-abstract-transport-3.0.0.tgz",
++      "integrity": "sha512-wlfUczU+n7Hy/Ha5j9a/gZNy7We5+cXp8YL+X+PG8S0KXxw7n/JXA3c46Y0zQznIJ83URJiwy7Lh56WLokNuxg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "split2": "^4.0.0"
++      }
++    },
++    "node_modules/pino-pretty/node_modules/strip-json-comments": {
++      "version": "5.0.3",
++      "resolved": "https://registry.npmjs.org/strip-json-comments/-/strip-json-comments-5.0.3.tgz",
++      "integrity": "sha512-1tB5mhVo7U+ETBKNf92xT4hrQa3pm0MZ0PQvuDnWgAAGHDsfp4lPSpiS6psrSiet87wyGPh9ft6wmhOMQ0hDiw==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=14.16"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
+     "node_modules/pino-std-serializers": {
+       "version": "7.1.0",
+       "resolved": "https://registry.npmjs.org/pino-std-serializers/-/pino-std-serializers-7.1.0.tgz",
+       "integrity": "sha512-BndPH67/JxGExRgiX1dX0w1FvZck5Wa4aal9198SrRhZjH3GxKQUKIBnYJTdj2HDN3UQAS06HlfcSbQj2OHmaw==",
+       "license": "MIT"
+     },
+     "node_modules/process-warning": {
+       "version": "5.0.0",
+       "resolved": "https://registry.npmjs.org/process-warning/-/process-warning-5.0.0.tgz",
+       "integrity": "sha512-a39t9ApHNx2L4+HBnQKqxxHNs1r7KF+Intd8Q/g1bUh6q0WIp9voPXJ/x0j+ZL45KF1pJd9+q2jLIRMfvEshkA==",
+       "funding": [
+         {
+           "type": "github",
+           "url": "https://github.com/sponsors/fastify"
+         },
+         {
+           "type": "opencollective",
+           "url": "https://opencollective.com/fastify"
+         }
+       ],
+       "license": "MIT"
+     },
+     "node_modules/prom-client": {
+       "version": "15.1.3",
+       "resolved": "https://registry.npmjs.org/prom-client/-/prom-client-15.1.3.tgz",
+       "integrity": "sha512-6ZiOBfCywsD4k1BN9IX0uZhF+tJkV8q8llP64G5Hajs4JOeVLPCwpPVcpXy3BwYiUGgyJzsJJQeOIv7+hDSq8g==",
+       "license": "Apache-2.0",
+       "dependencies": {
+         "@opentelemetry/api": "^1.4.0",
+         "tdigest": "^0.1.1"
+       },
+       "engines": {
+         "node": "^16 || ^18 || >=20"
+       }
+     },
+     "node_modules/proxy-from-env": {
+       "version": "1.1.0",
+       "resolved": "https://registry.npmjs.org/proxy-from-env/-/proxy-from-env-1.1.0.tgz",
+       "integrity": "sha512-D+zkORCbA9f1tdWRK0RaCR3GPv50cMxcrz4X8k5LTSUD1Dkw47mKJEZQNunItRTkWwgtaUSo1RVFRIG9ZXiFYg==",
+       "license": "MIT"
+     },
++    "node_modules/pump": {
++      "version": "3.0.3",
++      "resolved": "https://registry.npmjs.org/pump/-/pump-3.0.3.tgz",
++      "integrity": "sha512-todwxLMY7/heScKmntwQG8CXVkWUOdYxIvY2s0VWAAMh/nd8SoYiRaKjlr7+iCs984f2P8zvrfWcDDYVb73NfA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "end-of-stream": "^1.1.0",
++        "once": "^1.3.1"
++      }
++    },
+     "node_modules/qs": {
+       "version": "6.14.2",
+       "resolved": "https://registry.npmjs.org/qs/-/qs-6.14.2.tgz",
+       "integrity": "sha512-V/yCWTTF7VJ9hIh18Ugr2zhJMP01MY7c5kh4J870L7imm6/DIzBsNLTXzMwUA3yZ5b/KBqLx8Kp3uRvd7xSe3Q==",
+       "license": "BSD-3-Clause",
+       "dependencies": {
+         "side-channel": "^1.1.0"
+       },
+       "engines": {
+         "node": ">=0.6"
+       },
+       "funding": {
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
+     "node_modules/quick-format-unescaped": {
+       "version": "4.0.4",
+       "resolved": "https://registry.npmjs.org/quick-format-unescaped/-/quick-format-unescaped-4.0.4.tgz",
+       "integrity": "sha512-tYC1Q1hgyRuHgloV/YXs2w15unPVh8qfu/qCTfhTYamaw7fyhumKa2yGpdSo87vY32rIclj+4fWYQXUMs9EHvg==",
+       "license": "MIT"
+     },
+     "node_modules/readable-stream": {
+       "version": "3.6.2",
+       "resolved": "https://registry.npmjs.org/readable-stream/-/readable-stream-3.6.2.tgz",
+       "integrity": "sha512-9u/sniCrY3D5WdsERHzHE4G2YCXqoG5FTHUiCC4SIbr6XcLZBY05ya9EKjYek9O5xOAwjGq+1JdGBAS7Q9ScoA==",
+diff --git a/package.json b/package.json
+index eb6d1915542097463bb0517f5a5c4c4ca0383ebc..2df8f8eb75d572460971b25e80c88560cb080d05 100644
+--- a/package.json
++++ b/package.json
+@@ -1,36 +1,37 @@
+ {
+   "name": "quickrupee-voice-bot",
+   "version": "1.0.0",
+   "description": "Production-grade, low-latency voice AI screening system for QuickRupee digital lending",
+   "main": "dist/server.js",
+   "scripts": {
+     "dev": "tsx watch src/server.ts",
+     "dev:node": "ts-node-dev --respawn --transpile-only src/server.ts",
+     "build": "tsc",
+     "start": "node dist/server.js",
+     "typecheck": "tsc --noEmit",
+     "lint": "eslint src/**/*.ts"
+   },
+   "engines": {
+     "node": ">=20.0.0"
+   },
+   "dependencies": {
+     "@anthropic-ai/sdk": "^0.39.0",
+     "@deepgram/sdk": "^3.9.0",
+-    "@fastify/websocket": "^10.0.1",
++    "@fastify/websocket": "^11.2.0",
+     "dotenv": "^16.4.7",
+-    "fastify": "^5.2.1",
+     "fastest-levenshtein": "^1.0.16",
++    "fastify": "^5.2.1",
+     "pino": "^9.6.0",
+     "prom-client": "^15.1.3",
+     "twilio": "^5.4.4",
+     "ws": "^8.18.0"
+   },
+   "devDependencies": {
+     "@types/node": "^22.13.0",
+     "@types/ws": "^8.5.14",
++    "pino-pretty": "^13.1.3",
+     "ts-node-dev": "^2.0.0",
+     "tsx": "^4.19.2",
+     "typescript": "^5.7.3"
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/public/dev.html b/public/dev.html
+new file mode 100644
+index 0000000000000000000000000000000000000000..30b4b8911b06e8aaefea5e358d8ea71cf6d413fb
+--- /dev/null
++++ b/public/dev.html
+@@ -0,0 +1,282 @@
++<!doctype html>
++<html lang="en">
++<head>
++  <meta charset="UTF-8" />
++  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++  <title>Voice Bot Local Dev Harness</title>
++  <style>
++    body { font-family: Arial, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 12px; }
++    .row { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
++    button { padding: 10px 14px; font-size: 14px; cursor: pointer; }
++    #status { font-weight: 700; }
++    .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-top: 12px; }
++    code { background: #f2f2f2; padding: 2px 6px; border-radius: 4px; }
++  </style>
++</head>
++<body>
++  <h1>Local Streaming Voice Harness</h1>
++  <div class="row">
++    <button id="startBtn">Start</button>
++    <button id="stopBtn" disabled>Stop</button>
++    <div>Status: <span id="status">idle</span></div>
++  </div>
++
++  <div class="card">
++    <div>WS RTT: <span id="rtt">-</span> ms</div>
++    <div>Last TTS chunk at: <span id="ttsTs">-</span></div>
++    <div>Input sample rate: <span id="inputRate">-</span></div>
++    <div>Sent frames: <span id="sentFrames">0</span></div>
++    <div>Received TTS chunks: <span id="recvChunks">0</span></div>
++  </div>
++
++  <script>
++    const startBtn = document.getElementById('startBtn');
++    const stopBtn = document.getElementById('stopBtn');
++    const statusEl = document.getElementById('status');
++    const rttEl = document.getElementById('rtt');
++    const ttsTsEl = document.getElementById('ttsTs');
++    const inputRateEl = document.getElementById('inputRate');
++    const sentFramesEl = document.getElementById('sentFrames');
++    const recvChunksEl = document.getElementById('recvChunks');
++
++    let ws = null;
++    let stream = null;
++    let audioContext = null;
++    let mediaSource = null;
++    let processor = null;
++
++    let playbackCtx = null;
++    let playbackQueueTime = 0;
++
++    let sentFrames = 0;
++    let recvChunks = 0;
++    let pingInterval = null;
++
++    function setStatus(v) { statusEl.textContent = v; }
++
++    function downsampleFloat32To8k(input, sampleRate) {
++      if (sampleRate === 8000) return input;
++      const ratio = sampleRate / 8000;
++      const outLength = Math.max(1, Math.floor(input.length / ratio));
++      const out = new Float32Array(outLength);
++      let inPos = 0;
++      for (let i = 0; i < outLength; i++) {
++        const nextInPos = Math.min(input.length, Math.floor((i + 1) * ratio));
++        let sum = 0;
++        let count = 0;
++        for (let j = Math.floor(inPos); j < nextInPos; j++) {
++          sum += input[j] || 0;
++          count++;
++        }
++        out[i] = count > 0 ? sum / count : 0;
++        inPos = nextInPos;
++      }
++      return out;
++    }
++
++    function floatToPcm16(floatData) {
++      const out = new Int16Array(floatData.length);
++      for (let i = 0; i < floatData.length; i++) {
++        const s = Math.max(-1, Math.min(1, floatData[i] || 0));
++        out[i] = s < 0 ? Math.round(s * 32768) : Math.round(s * 32767);
++      }
++      return out;
++    }
++
++    function pcm16ToBase64(pcm16) {
++      const bytes = new Uint8Array(pcm16.buffer);
++      let bin = '';
++      const chunkSize = 0x8000;
++      for (let i = 0; i < bytes.length; i += chunkSize) {
++        const sub = bytes.subarray(i, i + chunkSize);
++        bin += String.fromCharCode(...sub);
++      }
++      return btoa(bin);
++    }
++
++    function base64ToBytes(base64) {
++      const bin = atob(base64);
++      const bytes = new Uint8Array(bin.length);
++      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
++      return bytes;
++    }
++
++    function mulawByteToPcm16(muLawByte) {
++      const MULAW_BIAS = 0x84;
++      let u = (~muLawByte) & 0xff;
++      const sign = u & 0x80;
++      const exponent = (u >> 4) & 0x07;
++      const mantissa = u & 0x0f;
++      let sample = ((mantissa << 3) + MULAW_BIAS) << exponent;
++      sample -= MULAW_BIAS;
++      return sign ? -sample : sample;
++    }
++
++    function decodeMulawToFloat32(bytes) {
++      const out = new Float32Array(bytes.length);
++      for (let i = 0; i < bytes.length; i++) {
++        const pcm = mulawByteToPcm16(bytes[i]);
++        out[i] = pcm / 32768;
++      }
++      return out;
++    }
++
++    function schedulePlayback(float32, sampleRate = 8000) {
++      if (!playbackCtx) {
++        playbackCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate });
++      }
++
++      const buffer = playbackCtx.createBuffer(1, float32.length, sampleRate);
++      buffer.copyToChannel(float32, 0);
++
++      const src = playbackCtx.createBufferSource();
++      src.buffer = buffer;
++      src.connect(playbackCtx.destination);
++
++      const now = playbackCtx.currentTime;
++      if (playbackQueueTime < now + 0.03) {
++        playbackQueueTime = now + 0.03;
++      }
++      src.start(playbackQueueTime);
++      playbackQueueTime += buffer.duration;
++    }
++
++    function flushPlaybackQueue() {
++      playbackQueueTime = playbackCtx ? playbackCtx.currentTime : 0;
++    }
++
++    async function start() {
++      if (ws) return;
++      setStatus('connecting');
++
++      playbackCtx = new (window.AudioContext || window.webkitAudioContext)();
++
++      const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
++      ws = new WebSocket(`${wsProto}://${location.host}/dev-audio`);
++
++      ws.onopen = async () => {
++        setStatus('connected');
++        startBtn.disabled = true;
++        stopBtn.disabled = false;
++
++        ws.send(JSON.stringify({ type: 'start' }));
++
++        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
++        audioContext = new (window.AudioContext || window.webkitAudioContext)();
++        inputRateEl.textContent = String(audioContext.sampleRate);
++
++        mediaSource = audioContext.createMediaStreamSource(stream);
++        processor = audioContext.createScriptProcessor(2048, 1, 1);
++
++        processor.onaudioprocess = (event) => {
++          if (!ws || ws.readyState !== WebSocket.OPEN) return;
++          const input = event.inputBuffer.getChannelData(0);
++          const down = downsampleFloat32To8k(input, audioContext.sampleRate);
++          const pcm16 = floatToPcm16(down);
++
++          ws.send(JSON.stringify({
++            type: 'audio',
++            encoding: 'pcm16',
++            sampleRate: 8000,
++            channels: 1,
++            data: pcm16ToBase64(pcm16),
++          }));
++
++          sentFrames++;
++          sentFramesEl.textContent = String(sentFrames);
++        };
++
++        mediaSource.connect(processor);
++        processor.connect(audioContext.destination);
++
++        pingInterval = setInterval(() => {
++          if (!ws || ws.readyState !== WebSocket.OPEN) return;
++          ws.send(JSON.stringify({ type: 'ping' }));
++        }, 1000);
++      };
++
++      ws.onmessage = (event) => {
++        const msg = JSON.parse(event.data);
++
++        if (msg.type === 'audio' && msg.encoding === 'mulaw') {
++          const bytes = base64ToBytes(msg.data);
++          const float32 = decodeMulawToFloat32(bytes);
++          schedulePlayback(float32, msg.sampleRate || 8000);
++
++          recvChunks++;
++          recvChunksEl.textContent = String(recvChunks);
++          ttsTsEl.textContent = new Date().toLocaleTimeString();
++          return;
++        }
++
++        if (msg.type === 'clear') {
++          flushPlaybackQueue();
++          return;
++        }
++
++        if (msg.type === 'pong' && msg.ts) {
++          const now = Date.now();
++          rttEl.textContent = String(Math.max(0, now - msg.ts));
++        }
++      };
++
++      ws.onerror = () => {
++        setStatus('error');
++      };
++
++      ws.onclose = () => {
++        cleanup();
++        setStatus('closed');
++      };
++    }
++
++    function cleanup() {
++      if (pingInterval) {
++        clearInterval(pingInterval);
++        pingInterval = null;
++      }
++
++      if (processor) {
++        processor.disconnect();
++        processor.onaudioprocess = null;
++        processor = null;
++      }
++
++      if (mediaSource) {
++        mediaSource.disconnect();
++        mediaSource = null;
++      }
++
++      if (audioContext) {
++        audioContext.close();
++        audioContext = null;
++      }
++
++      if (stream) {
++        stream.getTracks().forEach((t) => t.stop());
++        stream = null;
++      }
++
++      if (ws) {
++        try { ws.close(); } catch {}
++        ws = null;
++      }
++
++      startBtn.disabled = false;
++      stopBtn.disabled = true;
++    }
++
++    startBtn.addEventListener('click', () => {
++      start().catch((err) => {
++        console.error(err);
++        setStatus('start_failed');
++      });
++    });
++
++    stopBtn.addEventListener('click', () => {
++      cleanup();
++      setStatus('stopped');
++    });
++  </script>
++</body>
++</html>
+diff --git a/src/config/index.ts b/src/config/index.ts
+index 86b9c9679e9ad74dcacacaba46f714c9a3fe19d5..922890d9baac4696a19d5845ee04e0e33d75ded6 100644
+--- a/src/config/index.ts
++++ b/src/config/index.ts
+@@ -1,163 +1,151 @@
+ /**
+  * QuickRupee Voice Bot — Centralized Configuration
+- *
+- * Loads all environment variables at startup, validates required values,
+- * and exports a frozen, typed config object.
+- *
+- * Voice profiles are defined here to support runtime accent switching
+- * via the VOICE_PROFILE environment variable.
+  */
+ 
+ import dotenv from 'dotenv';
+-import type { AppConfig, VoiceProfile } from '../types/index.js';
++import type { AppConfig, TransportMode, VoiceProfile } from '../types/index.js';
+ 
+ dotenv.config();
+ 
+-// ─── Voice Profile Registry ────────────────────────────────────
+-// Each profile maps to an ElevenLabs voice ID with tuned parameters.
+-// Add new profiles here; select at runtime via VOICE_PROFILE env var.
+-
+ const VOICE_PROFILES: Readonly<Record<string, VoiceProfile>> = {
+     indian_warm: {
+-        voiceId: 'pNInz6obpgDQGcFmaJgB',    // ElevenLabs "Adam" — warm Indian English
++        voiceId: 'pNInz6obpgDQGcFmaJgB',
+         accent: 'indian-english',
+         gender: 'male',
+         stability: 0.7,
+         similarityBoost: 0.8,
+     },
+     indian_female: {
+-        voiceId: 'EXAVITQu4vr4xnSDxMaL',    // ElevenLabs "Bella" — warm female
++        voiceId: 'EXAVITQu4vr4xnSDxMaL',
+         accent: 'indian-english',
+         gender: 'female',
+         stability: 0.8,
+         similarityBoost: 0.75,
+     },
+     us_professional: {
+-        voiceId: '21m00Tcm4TlvDq8ikWAM',     // ElevenLabs "Rachel" — US professional
++        voiceId: '21m00Tcm4TlvDq8ikWAM',
+         accent: 'neutral-english',
+         gender: 'female',
+         stability: 0.75,
+         similarityBoost: 0.8,
+     },
+ } as const;
+ 
+-// ─── Helper ────────────────────────────────────────────────────
+-
+ function requireEnv(key: string): string {
+     const value = process.env[key];
+     if (!value) {
+         throw new Error(`Missing required environment variable: ${key}`);
+     }
+     return value;
+ }
+ 
+ function optionalEnv(key: string, fallback: string): string {
+     return process.env[key] ?? fallback;
+ }
+ 
+ function optionalInt(key: string, fallback: number): number {
+     const raw = process.env[key];
+     if (!raw) return fallback;
+     const parsed = parseInt(raw, 10);
+     if (isNaN(parsed)) {
+         throw new Error(`Environment variable ${key} must be an integer, got: ${raw}`);
+     }
+     return parsed;
+ }
+ 
+ function optionalFloat(key: string, fallback: number): number {
+     const raw = process.env[key];
+     if (!raw) return fallback;
+     const parsed = parseFloat(raw);
+     if (isNaN(parsed)) {
+         throw new Error(`Environment variable ${key} must be a number, got: ${raw}`);
+     }
+     return parsed;
+ }
+ 
+ function optionalBool(key: string, fallback: boolean): boolean {
+     const raw = process.env[key];
+     if (!raw) return fallback;
+     return raw === 'true' || raw === '1';
+ }
+ 
+-// ─── Build Config ──────────────────────────────────────────────
++function optionalTransportMode(): TransportMode {
++    const raw = optionalEnv('TRANSPORT_MODE', 'local');
++    if (raw !== 'local' && raw !== 'twilio') {
++        throw new Error(`TRANSPORT_MODE must be "local" or "twilio", got: ${raw}`);
++    }
++    return raw;
++}
+ 
+ function buildAnthropicConfig(): AppConfig['anthropic'] {
+     const apiKey = process.env['ANTHROPIC_API_KEY'];
+-    // Skip if not set or still a placeholder
+     if (!apiKey || apiKey.startsWith('sk-ant-xxxx')) {
+         return undefined;
+     }
+     return Object.freeze({
+         apiKey,
+         model: optionalEnv('CLAUDE_MODEL', 'claude-sonnet-4-20250514'),
+     });
+ }
+ 
+ function buildConfig(): AppConfig {
++    const transportMode = optionalTransportMode();
++
+     return Object.freeze({
+         port: optionalInt('PORT', 3000),
+         host: optionalEnv('HOST', '0.0.0.0'),
+         nodeEnv: optionalEnv('NODE_ENV', 'development'),
+         logLevel: optionalEnv('LOG_LEVEL', 'info'),
+-        publicUrl: requireEnv('PUBLIC_URL'),
++        transportMode,
++        publicUrl: transportMode === 'twilio' ? requireEnv('PUBLIC_URL') : optionalEnv('PUBLIC_URL', ''),
+ 
+-        twilio: Object.freeze({
+-            accountSid: requireEnv('TWILIO_ACCOUNT_SID'),
+-            authToken: requireEnv('TWILIO_AUTH_TOKEN'),
+-            phoneNumber: requireEnv('TWILIO_PHONE_NUMBER'),
+-        }),
++        twilio: transportMode === 'twilio'
++            ? Object.freeze({
++                accountSid: requireEnv('TWILIO_ACCOUNT_SID'),
++                authToken: requireEnv('TWILIO_AUTH_TOKEN'),
++                phoneNumber: requireEnv('TWILIO_PHONE_NUMBER'),
++            })
++            : null,
+ 
+         deepgram: Object.freeze({
+             apiKey: requireEnv('DEEPGRAM_API_KEY'),
+             model: optionalEnv('DEEPGRAM_MODEL', 'nova-2'),
+             language: optionalEnv('DEEPGRAM_LANGUAGE', 'en-IN'),
+             endpointingMs: optionalInt('DEEPGRAM_ENDPOINTING_MS', 200),
+         }),
+ 
+         elevenlabs: Object.freeze({
+             apiKey: requireEnv('ELEVENLABS_API_KEY'),
+             model: optionalEnv('ELEVENLABS_MODEL', 'eleven_turbo_v2_5'),
+         }),
+ 
+         voiceProfile: optionalEnv('VOICE_PROFILE', 'indian_warm'),
+         sttConfidenceThreshold: optionalFloat('STT_CONFIDENCE_THRESHOLD', 0.7),
+ 
+         anthropic: buildAnthropicConfig(),
+ 
+         metricsEnabled: optionalBool('METRICS_ENABLED', true),
+     });
+ }
+ 
+-// ─── Exports ───────────────────────────────────────────────────
+-
+-/** Immutable application configuration. Throws on missing required env vars. */
+ export const config: AppConfig = buildConfig();
+ 
+-/**
+- * Resolve the active voice profile based on the VOICE_PROFILE env var.
+- * Falls back to `indian_warm` if the specified profile does not exist.
+- */
+ export function getActiveVoiceProfile(): VoiceProfile {
+     const profile = VOICE_PROFILES[config.voiceProfile];
+     if (!profile) {
+-        // Fallback to default rather than crashing — log a warning at call site
+-        const fallback = VOICE_PROFILES['indian_warm'];
++        const fallback = VOICE_PROFILES.indian_warm;
+         if (!fallback) {
+             throw new Error('Default voice profile "indian_warm" is missing from registry');
+         }
+         return fallback;
+     }
+     return profile;
+ }
+ 
+-/** Get all available voice profile names */
+ export function getAvailableProfiles(): string[] {
+     return Object.keys(VOICE_PROFILES);
+ }
+ 
+-/** Whether the Claude LLM worker is enabled (has a valid API key) */
+ export function isLlmEnabled(): boolean {
+     return config.anthropic !== undefined;
+ }
+diff --git a/src/dev/dev-routes.ts b/src/dev/dev-routes.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..a90c0582fd3c9c107b77fe08cb0b09e0ad2ade87
+--- /dev/null
++++ b/src/dev/dev-routes.ts
+@@ -0,0 +1,48 @@
++import type { FastifyInstance } from 'fastify';
++import { randomUUID } from 'crypto';
++import fs from 'fs/promises';
++import path from 'path';
++import { CallSession } from '../session/call-session.js';
++import { LocalWebTransport } from '../transport/local-web-transport.js';
++import { logger } from '../utils/logger.js';
++
++export async function registerDevRoutes(server: FastifyInstance, activeSessions: Map<string, CallSession>): Promise<void> {
++    server.get('/dev', async (_request, reply) => {
++        const devPath = path.resolve(process.cwd(), 'public', 'dev.html');
++        const html = await fs.readFile(devPath, 'utf-8');
++        return reply.type('text/html').code(200).send(html);
++    });
++
++    server.get('/dev-audio', { websocket: true }, (socket) => {
++        const callId = `local-${randomUUID()}`;
++
++        logger.info({ event: 'local_websocket_connection_opened', callId });
++
++        const session = new CallSession(callId, 'local-dev');
++        const transport = new LocalWebTransport(socket, callId);
++        activeSessions.set(callId, session);
++
++        void session.initialize(transport).catch((error) => {
++            logger.error({ err: error, callId }, 'Failed to initialize local call session');
++            activeSessions.delete(callId);
++        });
++
++        socket.on('close', () => {
++            logger.info({ event: 'local_websocket_connection_closed', callId });
++            const existingSession = activeSessions.get(callId);
++            if (existingSession) {
++                existingSession.destroy();
++                activeSessions.delete(callId);
++            }
++        });
++
++        socket.on('error', (error) => {
++            logger.error({ err: error, callId }, 'Local WebSocket error');
++            const existingSession = activeSessions.get(callId);
++            if (existingSession) {
++                existingSession.destroy();
++                activeSessions.delete(callId);
++            }
++        });
++    });
++}
+diff --git a/src/server.ts b/src/server.ts
+index 7c0432067b6a0e17166e848fa791654938ec623f..e85a2e217d088f1dcb5f0b2724708d1d5803409e 100644
+--- a/src/server.ts
++++ b/src/server.ts
+@@ -1,216 +1,146 @@
+-/**
+- * QuickRupee Voice Bot — Fastify Server
+- *
+- * Entry point for the voice bot backend.
+- *
+- * Routes:
+- *   POST /twiml        — Twilio webhook, returns TwiML with <Connect><Stream>
+- *   GET  /health       — Health check for load balancer / container orchestrator
+- *   GET  /metrics      — Prometheus metrics endpoint
+- *   WS   /media-stream — Twilio bidirectional WebSocket media stream
+- *
+- * Design:
+- *   - Fastify chosen over Express for ~3x lower overhead per request
+- *   - WebSocket plugin for native WS support alongside HTTP
+- *   - Graceful shutdown drains active calls before process exit
+- *   - Active call sessions managed in a Map keyed by unique call ID
+- */
+-
+ import Fastify from 'fastify';
+ import fastifyWebsocket from '@fastify/websocket';
++import { randomUUID } from 'crypto';
+ import { config, isLlmEnabled } from './config/index.js';
+ import { generateStreamTwiML } from './telephony/twilio-handler.js';
+ import { CallSession } from './session/call-session.js';
+ import { metrics } from './metrics/collector.js';
+ import { logger } from './utils/logger.js';
+-import { randomUUID } from 'crypto';
+-
+-// ── Active Sessions ─────────────────────────────────────────────
++import { TwilioTransport } from './transport/twilio-transport.js';
++import { registerDevRoutes } from './dev/dev-routes.js';
+ 
+-/** Map of callId → active CallSession */
+ const activeSessions: Map<string, CallSession> = new Map();
+ 
+-// ── Server Setup ────────────────────────────────────────────────
+-
+ async function buildServer() {
+     const server = Fastify({
+-        logger: false, // We use our own Pino logger
+-        trustProxy: true, // Running behind ALB
++        logger: false,
++        trustProxy: true,
+     });
+ 
+-    // Register WebSocket plugin
+     await server.register(fastifyWebsocket);
+ 
+-    // ── POST /twiml ─────────────────────────────────────────────
+-    // Twilio calls this when an inbound call connects.
+-    // We return TwiML that tells Twilio to open a bidirectional
+-    // WebSocket media stream to our /media-stream endpoint.
+-    server.post('/twiml', async (_request, reply) => {
+-        logger.info({ event: 'twiml_webhook_hit' });
+-
+-        const twiml = generateStreamTwiML(config.publicUrl);
+-
+-        return reply
+-            .type('text/xml')
+-            .code(200)
+-            .send(twiml);
+-    });
+-
+-    // ── GET /health ─────────────────────────────────────────────
+-    // Used by ALB health checks and container orchestrators.
+     server.get('/health', async (_request, reply) => {
+         return reply.code(200).send({
+             status: 'ok',
+             uptime: process.uptime(),
+             activeCalls: activeSessions.size,
+             timestamp: new Date().toISOString(),
++            transportMode: config.transportMode,
+         });
+     });
+ 
+-    // ── GET /metrics ────────────────────────────────────────────
+-    // Prometheus scrape endpoint.
+     server.get('/metrics', async (_request, reply) => {
+         const metricsOutput = await metrics.getMetrics();
+-        return reply
+-            .type(metrics.getContentType())
+-            .code(200)
+-            .send(metricsOutput);
++        return reply.type(metrics.getContentType()).code(200).send(metricsOutput);
+     });
+ 
+-    // ── WS /media-stream ───────────────────────────────────────
+-    // Twilio connects here after receiving the TwiML response.
+-    // Each connection = one active phone call.
+-    server.get('/media-stream', { websocket: true }, (socket, _request) => {
+-        const callId = randomUUID();
+-
+-        logger.info({
+-            event: 'websocket_connection_opened',
+-            callId,
++    if (config.transportMode === 'twilio') {
++        server.post('/twiml', async (_request, reply) => {
++            logger.info({ event: 'twiml_webhook_hit' });
++            const twiml = generateStreamTwiML(config.publicUrl);
++            return reply.type('text/xml').code(200).send(twiml);
+         });
+ 
+-        // Create a new call session
+-        // Phone number will be populated from Twilio's start message
+-        const session = new CallSession(callId, 'unknown');
+-        activeSessions.set(callId, session);
++        server.get('/media-stream', { websocket: true }, (socket) => {
++            const callId = randomUUID();
+ 
+-        // Initialize the session with the WebSocket
+-        void session.initialize(socket).catch((error) => {
+-            logger.error({ err: error, callId }, 'Failed to initialize call session');
+-            activeSessions.delete(callId);
+-        });
++            logger.info({ event: 'websocket_connection_opened', callId });
+ 
+-        // Clean up when connection closes
+-        socket.on('close', () => {
+-            logger.info({ event: 'websocket_connection_closed', callId });
+-            const existingSession = activeSessions.get(callId);
+-            if (existingSession) {
+-                existingSession.destroy();
+-                activeSessions.delete(callId);
+-            }
+-        });
++            const session = new CallSession(callId, 'unknown');
++            const transport = new TwilioTransport(socket, callId);
++            activeSessions.set(callId, session);
+ 
+-        socket.on('error', (error) => {
+-            logger.error({ err: error, callId }, 'WebSocket error');
+-            const existingSession = activeSessions.get(callId);
+-            if (existingSession) {
+-                existingSession.destroy();
++            void session.initialize(transport).catch((error) => {
++                logger.error({ err: error, callId }, 'Failed to initialize call session');
+                 activeSessions.delete(callId);
+-            }
++            });
++
++            socket.on('close', () => {
++                logger.info({ event: 'websocket_connection_closed', callId });
++                const existingSession = activeSessions.get(callId);
++                if (existingSession) {
++                    existingSession.destroy();
++                    activeSessions.delete(callId);
++                }
++            });
++
++            socket.on('error', (error) => {
++                logger.error({ err: error, callId }, 'WebSocket error');
++                const existingSession = activeSessions.get(callId);
++                if (existingSession) {
++                    existingSession.destroy();
++                    activeSessions.delete(callId);
++                }
++            });
+         });
+-    });
++    }
++
++    if (config.transportMode === 'local') {
++        await registerDevRoutes(server, activeSessions);
++    }
+ 
+     return server;
+ }
+ 
+-// ── Startup ─────────────────────────────────────────────────────
+-
+ async function main(): Promise<void> {
+     logger.info({
+         event: 'server_starting',
+         port: config.port,
+         host: config.host,
+         nodeEnv: config.nodeEnv,
+         voiceProfile: config.voiceProfile,
+         metricsEnabled: config.metricsEnabled,
++        transportMode: config.transportMode,
+     });
+ 
+     const server = await buildServer();
+ 
+-    // Graceful shutdown
+     const shutdown = async (signal: string) => {
+         logger.info({ event: 'shutdown_initiated', signal });
+ 
+-        // Destroy all active sessions
+         for (const [callId, session] of activeSessions) {
+             logger.info({ event: 'destroying_session', callId });
+             session.destroy();
+             activeSessions.delete(callId);
+         }
+ 
+         try {
+             await server.close();
+-            logger.info({ event: 'server_closed' });
++            logger.info({ event: 'server_shutdown_complete' });
+             process.exit(0);
+         } catch (error) {
+-            logger.error({ err: error }, 'Error during shutdown');
++            logger.error({ err: error }, 'Error during server shutdown');
+             process.exit(1);
+         }
+     };
+ 
+-    process.on('SIGTERM', () => void shutdown('SIGTERM'));
+-    process.on('SIGINT', () => void shutdown('SIGINT'));
++    process.on('SIGTERM', () => {
++        void shutdown('SIGTERM');
++    });
++
++    process.on('SIGINT', () => {
++        void shutdown('SIGINT');
++    });
+ 
+-    // Start listening
+     try {
+-        await server.listen({ port: config.port, host: config.host });
++        await server.listen({
++            port: config.port,
++            host: config.host,
++        });
+ 
+         logger.info({
+             event: 'server_started',
+             address: `http://${config.host}:${config.port}`,
+-            publicUrl: config.publicUrl,
+-            voiceProfile: config.voiceProfile,
++            metrics: `http://${config.host}:${config.port}/metrics`,
++            health: `http://${config.host}:${config.port}/health`,
+             llmEnabled: isLlmEnabled(),
+-            environment: config.nodeEnv,
+-            twimlEndpoint: `POST http://${config.host}:${config.port}/twiml`,
+-            healthEndpoint: `GET http://${config.host}:${config.port}/health`,
+-            metricsEndpoint: `GET http://${config.host}:${config.port}/metrics`,
+-            wsEndpoint: `ws://${config.host}:${config.port}/media-stream`,
++            transportMode: config.transportMode,
++            devClient: config.transportMode === 'local' ? `http://${config.host}:${config.port}/dev` : undefined,
+         });
+-
+-        // ── Local Testing Guide (dev mode only) ─────────────────
+-        if (config.nodeEnv === 'development') {
+-            const guide = [
+-                '',
+-                '╔══════════════════════════════════════════════════════════╗',
+-                '║             QuickRupee Voice Bot — Local Dev            ║',
+-                '╠══════════════════════════════════════════════════════════╣',
+-                `║  Server:    http://${config.host}:${config.port}`,
+-                `║  PUBLIC_URL: ${config.publicUrl}`,
+-                `║  Voice:     ${config.voiceProfile}`,
+-                `║  LLM:       ${isLlmEnabled() ? 'ENABLED (Claude)' : 'DISABLED — set ANTHROPIC_API_KEY to enable'}`,
+-                '╠══════════════════════════════════════════════════════════╣',
+-                '║  Local Testing Instructions:                            ║',
+-                '║                                                         ║',
+-                '║  1. Run: ngrok http 3000                                ║',
+-                '║  2. Copy the HTTPS forwarding URL                       ║',
+-                '║  3. Update PUBLIC_URL in .env to that URL               ║',
+-                '║  4. Restart this server                                 ║',
+-                '║  5. Set Twilio webhook to:                              ║',
+-                '║     https://your-ngrok-url/twiml                        ║',
+-                '║  6. Call your Twilio number                             ║',
+-                '║  7. Complete the 3-question screening flow              ║',
+-                '║  8. Check logs for latency data and metrics at /metrics ║',
+-                '╚══════════════════════════════════════════════════════════╝',
+-                '',
+-            ];
+-            console.log(guide.join('\n'));
+-        }
+     } catch (error) {
+         logger.error({ err: error }, 'Failed to start server');
+         process.exit(1);
+     }
+ }
+ 
+-// ── Run ─────────────────────────────────────────────────────────
+-
+ void main();
+diff --git a/src/session/call-session.ts b/src/session/call-session.ts
+index 442af6241503ef5c7181654f8c2343e5eab5563d..7c72831c0447e62b11e064de6a3692dc2845129e 100644
+--- a/src/session/call-session.ts
++++ b/src/session/call-session.ts
+@@ -1,480 +1,383 @@
+ /**
+  * QuickRupee Voice Bot — Call Session Orchestrator
+- *
+- * Creates and manages one session per active phone call.
+- * Orchestrates the real-time pipeline:
+- *
+- *   Twilio audio → STT (Deepgram) → Engine (state machine)
+- *                                → TTS (ElevenLabs) → Twilio audio
+- *
+- * Responsibilities:
+- *   - Instantiate per-call STT, TTS, and state machine instances
+- *   - Wire event handlers between components
+- *   - Measure per-turn latency with nanosecond precision
+- *   - Detect and handle barge-in (user interrupts bot)
+- *   - Trigger post-call LLM processing on call end
+- *   - Clean up all resources on call termination
+- *
+- * This module owns the real-time latency budget. Every decision here
+- * is optimized for minimal time between user-stops-speaking and
+- * bot-starts-speaking.
+  */
+ 
+-import type WebSocket from 'ws';
+ import { config, getActiveVoiceProfile } from '../config/index.js';
+ import { ConversationState } from '../types/index.js';
+ import type { TurnDurations, TranscriptTurn, STTTranscriptEvent } from '../types/index.js';
+ import { ConversationStateMachine } from '../engine/state-machine.js';
+ import { DeepgramSTTClient } from '../stt/deepgram-client.js';
+ import { ElevenLabsTTSClient } from '../tts/elevenlabs-client.js';
+-import { TwilioStreamHandler } from '../telephony/twilio-handler.js';
+ import { metrics, hrtimeNs } from '../metrics/collector.js';
+ import { processCallbackNote } from '../llm/claude-worker.js';
+ import { createCallLogger, hrtimeDiffMs } from '../utils/logger.js';
+ import type pino from 'pino';
++import type { AudioTransport } from '../transport/audio-transport.js';
+ 
+ export class CallSession {
+     private readonly callId: string;
+     private readonly log: pino.Logger;
+ 
+-    private twilioHandler: TwilioStreamHandler | null = null;
++    private transport: AudioTransport | null = null;
+     private sttClient: DeepgramSTTClient | null = null;
+     private ttsClient: ElevenLabsTTSClient | null = null;
+     private stateMachine: ConversationStateMachine;
+ 
+-    /** Whether this session has been cleaned up */
+     private destroyed = false;
+ 
+-    /** Per-turn latency tracking */
+     private turnStartNs: bigint = BigInt(0);
+     private sttFinalNs: bigint = BigInt(0);
+     private logicStartNs: bigint = BigInt(0);
+     private logicEndNs: bigint = BigInt(0);
+     private ttsRequestNs: bigint = BigInt(0);
+     private ttsFirstByteNs: bigint = BigInt(0);
+ 
+-    /** Turn counter for unique turn IDs */
+     private turnCounter = 0;
+ 
+-    /** DTMF digit accumulator (for salary input via keypad) */
+     private dtmfBuffer = '';
+     private dtmfTimer: ReturnType<typeof setTimeout> | null = null;
+ 
+-    /** Track call start for duration logging */
+     private readonly callStartNs: bigint;
+ 
+     constructor(callId: string, phoneNumber: string) {
+         this.callId = callId;
+         this.callStartNs = hrtimeNs();
+         this.log = createCallLogger(callId, phoneNumber);
+         this.stateMachine = new ConversationStateMachine(callId, phoneNumber);
+ 
+         this.log.info({ event: 'session_created' });
+         metrics.callStarted();
+     }
+ 
+-    /**
+-     * Initialize the session with a Twilio WebSocket connection.
+-     * Sets up the full streaming pipeline.
+-     */
+-    async initialize(ws: WebSocket): Promise<void> {
++    async initialize(transport: AudioTransport): Promise<void> {
+         try {
+-            // 1. Create Twilio handler
+-            this.twilioHandler = new TwilioStreamHandler(ws, {
+-                onStart: this.handleTwilioStart.bind(this),
+-                onAudio: this.handleTwilioAudio.bind(this),
+-                onDTMF: this.handleTwilioDTMF.bind(this),
+-                onStop: this.handleTwilioStop.bind(this),
+-            }, this.callId);
+-
+-            // 2. Create STT client
++            this.transport = transport;
++
+             this.sttClient = new DeepgramSTTClient({
+                 apiKey: config.deepgram.apiKey,
+                 model: config.deepgram.model,
+                 language: config.deepgram.language,
+                 endpointingMs: config.deepgram.endpointingMs,
+                 callId: this.callId,
+             });
+ 
+-            // 3. Create TTS client
+             const voiceProfile = getActiveVoiceProfile();
+             this.ttsClient = new ElevenLabsTTSClient({
+                 apiKey: config.elevenlabs.apiKey,
+                 model: config.elevenlabs.model,
+                 voiceProfile,
+                 callId: this.callId,
+             });
+ 
+-            // 4. Wire STT events
+             this.sttClient.on('transcript', this.handleFinalTranscript.bind(this));
+             this.sttClient.on('interim', this.handleInterimTranscript.bind(this));
+             this.sttClient.on('error', (error) => {
+                 this.log.error({ err: error }, 'STT error during session');
+                 metrics.recordError('stt');
+             });
+ 
+-            // 5. Wire TTS events
+             this.ttsClient.on('audio', this.handleTTSAudio.bind(this));
+             this.ttsClient.on('error', (error) => {
+                 this.log.error({ err: error }, 'TTS error during session');
+                 metrics.recordError('tts');
+             });
+ 
++            this.transport.onStart(this.handleTransportStart.bind(this));
++            this.transport.onAudio(this.handleTransportAudio.bind(this));
++            this.transport.onDTMF(this.handleTransportDTMF.bind(this));
++            this.transport.onClose(this.handleTransportStop.bind(this));
++
+             this.log.info({ event: 'session_initialized', voiceProfile: config.voiceProfile });
+         } catch (error) {
+             this.log.error({ err: error }, 'Failed to initialize session');
+             throw error;
+         }
+     }
+ 
+-    // ── Twilio Event Handlers ─────────────────────────────────────
+-
+-    private async handleTwilioStart(streamSid: string, callSid: string): Promise<void> {
++    private async handleTransportStart(meta: { streamId: string; callId: string }): Promise<void> {
+         this.log.info({
+             event: 'call_stream_started',
+-            streamSid,
+-            callSid,
++            streamSid: meta.streamId,
++            callSid: meta.callId,
+         });
+ 
+         try {
+-            // Connect to Deepgram STT
+             await this.sttClient?.connect();
+-
+-            // Start the conversation with the greeting
+             const result = this.stateMachine.startConversation();
+-
+-            // Speak the greeting
+             await this.speak(result.response);
+         } catch (error) {
+             this.log.error({ err: error }, 'Failed to start call pipeline');
+             metrics.recordError('engine');
+             this.destroy();
+         }
+     }
+ 
+-    /**
+-     * Handle audio from Twilio (caller's voice).
+-     * Forward directly to STT — this is the hottest path.
+-     * No processing, no copying, minimal overhead.
+-     */
+-    private handleTwilioAudio(audioBuffer: Buffer): void {
++    private handleTransportAudio(audioBuffer: Buffer): void {
+         if (this.destroyed) return;
+ 
+-        // Track turn start if not already tracking
+         if (this.turnStartNs === BigInt(0)) {
+             this.turnStartNs = hrtimeNs();
+         }
+ 
+-        // Forward audio to Deepgram for transcription
+         this.sttClient?.sendAudio(audioBuffer);
+     }
+ 
+-    /** Handle DTMF digit from Twilio */
+-    private handleTwilioDTMF(digit: string): void {
++    private handleTransportDTMF(digit: string): void {
+         this.log.info({ event: 'dtmf_received', digit });
+ 
+-        // If in DTMF_FALLBACK mode, accumulate digits
+         if (this.stateMachine.getCurrentState() === ConversationState.DTMF_FALLBACK) {
+             if (digit === '#') {
+-                // '#' terminates DTMF input — process accumulated digits
+                 const result = this.stateMachine.handleDTMFInput(this.dtmfBuffer);
+                 this.dtmfBuffer = '';
+ 
+                 if (this.dtmfTimer) {
+                     clearTimeout(this.dtmfTimer);
+                     this.dtmfTimer = null;
+                 }
+ 
+                 if (result.response) {
+                     void this.speak(result.response);
+                 }
+                 if (result.shouldEnd) {
+                     this.endCall(result.newState);
+                 }
+             } else {
+                 this.dtmfBuffer += digit;
+ 
+-                // Auto-process after 5 seconds of no input
+                 if (this.dtmfTimer) clearTimeout(this.dtmfTimer);
+                 this.dtmfTimer = setTimeout(() => {
+                     if (this.dtmfBuffer.length > 0) {
+                         const result = this.stateMachine.handleDTMFInput(this.dtmfBuffer);
+                         this.dtmfBuffer = '';
+                         if (result.response) {
+                             void this.speak(result.response);
+                         }
+                         if (result.shouldEnd) {
+                             this.endCall(result.newState);
+                         }
+                     }
+                 }, 5000);
+             }
+ 
+-            // For single-digit DTMF (employment question: 1 or 2)
+             if (digit === '1' || digit === '2') {
+                 const previousState = this.stateMachine.getContext().previousState;
+                 if (previousState === ConversationState.ASK_EMPLOYMENT) {
+                     const result = this.stateMachine.handleDTMFInput(digit);
+                     this.dtmfBuffer = '';
+                     if (result.response) {
+                         void this.speak(result.response);
+                     }
+                     if (result.shouldEnd) {
+                         this.endCall(result.newState);
+                     }
+                 }
+             }
+ 
+             metrics.recordDtmfFallback();
+         }
+     }
+ 
+-    /** Handle Twilio stream stop */
+-    private handleTwilioStop(): void {
++    private handleTransportStop(): void {
+         this.log.info({ event: 'call_ended' });
+         this.endCall(this.stateMachine.getCurrentState());
+     }
+ 
+-    // ── STT Event Handlers ────────────────────────────────────────
+-
+-    /**
+-     * Handle final transcript from Deepgram.
+-     * This is where the real-time pipeline kicks in:
+-     *   STT final → Logic evaluation → TTS synthesis → Audio playback
+-     */
+     private async handleFinalTranscript(event: STTTranscriptEvent): Promise<void> {
+         if (this.destroyed) return;
+ 
+         this.sttFinalNs = hrtimeNs();
+         this.turnCounter++;
+         const turnId = `turn_${String(this.turnCounter).padStart(3, '0')}`;
+ 
+-        // Record user transcript
+         const userTurn: TranscriptTurn = {
+             turnId,
+             speaker: 'user',
+             text: event.transcript,
+             confidence: event.confidence,
+             timestamp: Date.now(),
+             state: this.stateMachine.getCurrentState(),
+         };
+         this.stateMachine.addTranscriptTurn(userTurn);
+ 
+         this.log.info({
+             event: 'user_input',
+             turnId,
+             transcript: event.transcript,
+             confidence: event.confidence,
+             state: this.stateMachine.getCurrentState(),
+         });
+ 
+-        // ── Logic evaluation (deterministic, <10ms) ──────────────
+         this.logicStartNs = hrtimeNs();
+         const result = this.stateMachine.handleUserInput(event.transcript, event.confidence);
+         this.logicEndNs = hrtimeNs();
+ 
+         const logicLatencyMs = hrtimeDiffMs(this.logicStartNs, this.logicEndNs);
+         this.log.info({
+             event: 'logic_evaluated',
+             turnId,
+             logicLatencyMs,
+             newState: result.newState,
+             shouldEnd: result.shouldEnd,
+         });
+ 
+-        // Record bot transcript
+         if (result.response) {
+             const botTurn: TranscriptTurn = {
+                 turnId,
+                 speaker: 'bot',
+                 text: result.response,
+-                confidence: 1.0,
++                confidence: 1,
+                 timestamp: Date.now(),
+                 state: result.newState,
+             };
+             this.stateMachine.addTranscriptTurn(botTurn);
+-
+-            // ── TTS synthesis ────────────────────────────────────
+             await this.speak(result.response);
+         }
+ 
+-        // ── Record latency metrics ─────────────────────────────
+         const durations: TurnDurations = {
+             sttLatencyMs: hrtimeDiffMs(this.turnStartNs, this.sttFinalNs),
+             logicLatencyMs,
+             ttsLatencyMs: this.ttsClient?.getLastFirstByteLatencyMs() ?? 0,
+             totalTurnLatencyMs: hrtimeDiffMs(this.turnStartNs, hrtimeNs()),
+         };
+ 
+         metrics.recordTurnLatency(durations);
+ 
+         this.log.info({
+             event: 'turn_completed',
+             turnId,
+             latency: durations,
+             eligibility: this.stateMachine.getEligibility(),
+         });
+ 
+-        // Reset for next turn
+         this.turnStartNs = BigInt(0);
+         this.sttClient?.resetUtteranceTracking();
+ 
+-        // End the call if needed
+         if (result.shouldEnd) {
+-            // Wait for TTS to finish playing before hanging up
+             setTimeout(() => {
+                 this.endCall(result.newState);
+-            }, 3000); // Allow 3s for final TTS to play
++            }, 3000);
+         }
+     }
+ 
+-    /**
+-     * Handle interim transcript from Deepgram.
+-     * Used exclusively for barge-in detection:
+-     * if the user speaks while the bot is talking,
+-     * stop TTS and clear the audio queue.
+-     */
+     private handleInterimTranscript(event: STTTranscriptEvent): void {
+         if (this.destroyed) return;
+ 
+-        // Barge-in detection: user is speaking while bot is speaking
+         if (this.stateMachine.isBotSpeaking() && event.confidence > 0.5) {
+             this.log.info({
+                 event: 'barge_in_detected',
+                 interimTranscript: event.transcript.substring(0, 50),
+                 confidence: event.confidence,
+             });
+ 
+-            // Stop TTS immediately
+             this.ttsClient?.stop();
+             this.stateMachine.setBotSpeaking(false);
+-
+-            // Clear Twilio's audio buffer so the bot stops speaking
+-            this.twilioHandler?.clearAudioQueue();
++            this.transport?.clearPlaybackQueue();
+ 
+             metrics.recordBargeIn();
+         }
+     }
+ 
+-    // ── TTS Handling ──────────────────────────────────────────────
+-
+-    /**
+-     * Send text to TTS and stream audio to Twilio.
+-     * This is the output leg of the pipeline.
+-     */
+     private async speak(text: string): Promise<void> {
+-        if (this.destroyed || !this.ttsClient || !this.twilioHandler) return;
++        if (this.destroyed || !this.ttsClient || !this.transport) return;
+ 
+         this.stateMachine.setBotSpeaking(true);
+         this.ttsRequestNs = hrtimeNs();
+ 
+         this.log.info({
+             event: 'tts_request',
+             textLength: text.length,
+             text: text.substring(0, 100),
+         });
+ 
+         try {
+             await this.ttsClient.synthesize(text);
+         } catch (error) {
+             this.log.error({ err: error }, 'TTS synthesis failed');
+             metrics.recordError('tts');
+         } finally {
+             this.stateMachine.setBotSpeaking(false);
+         }
+     }
+ 
+-    /** Forward TTS audio chunks to Twilio */
+     private handleTTSAudio(audioBase64: string): void {
+         if (this.destroyed) return;
+ 
+         if (!this.ttsFirstByteNs && this.ttsRequestNs) {
+             this.ttsFirstByteNs = hrtimeNs();
+         }
+ 
+-        this.twilioHandler?.sendAudio(audioBase64);
++        const audioChunk = Buffer.from(audioBase64, 'base64');
++        this.transport?.sendAudio(audioChunk);
+     }
+ 
+-    // ── Call Lifecycle ────────────────────────────────────────────
+-
+-    /**
+-     * End the call and trigger post-call processing.
+-     */
+     private endCall(finalState: ConversationState): void {
+         if (this.destroyed) return;
+ 
+         const callDurationMs = hrtimeDiffMs(this.callStartNs, hrtimeNs());
+         const eligible = finalState === ConversationState.ELIGIBLE_CONFIRMATION;
+ 
+         this.log.info({
+             event: 'call_complete',
+             finalState,
+             eligible,
+             callDurationMs,
+             totalTurns: this.turnCounter,
+         });
+ 
+-        // Record call outcome metric
+         if (eligible) {
+             metrics.recordCallComplete('eligible');
+         } else if (finalState === ConversationState.REJECTION) {
+             metrics.recordCallComplete('rejected');
+         } else {
+             metrics.recordCallComplete('abandoned');
+         }
+ 
+-        // Trigger async post-call LLM processing (non-blocking)
+         const eligibility = this.stateMachine.getEligibility();
+         const transcript = this.stateMachine.getTranscript();
+         const context = this.stateMachine.getContext();
+ 
+         void processCallbackNote({
+             callId: this.callId,
+             transcript: [...transcript],
+             eligibilityResult: {
+                 eligible,
+                 isSalaried: eligibility.isSalaried ?? false,
+                 salary: eligibility.salary,
+                 location: eligibility.location,
+             },
+             phoneNumber: context.phoneNumber,
+         }).catch((error: unknown) => {
+             this.log.error({ err: error }, 'Post-call LLM processing failed');
+         });
+ 
+         this.destroy();
+     }
+ 
+-    /**
+-     * Clean up all session resources.
+-     * Called on call end, errors, or server shutdown.
+-     */
+     destroy(): void {
+         if (this.destroyed) return;
+         this.destroyed = true;
+ 
+         this.log.info({ event: 'session_destroyed' });
+ 
+-        // Clean up timers
+         if (this.dtmfTimer) {
+             clearTimeout(this.dtmfTimer);
+             this.dtmfTimer = null;
+         }
+ 
+-        // Disconnect STT
+         void this.sttClient?.disconnect().catch((err) => {
+             this.log.error({ err }, 'Error disconnecting STT');
+         });
+ 
+-        // Disconnect TTS
+         void this.ttsClient?.disconnect().catch((err) => {
+             this.log.error({ err }, 'Error disconnecting TTS');
+         });
+ 
++        this.transport?.close();
++
+         this.sttClient = null;
+         this.ttsClient = null;
+-        this.twilioHandler = null;
++        this.transport = null;
+ 
+         metrics.callEnded();
+     }
+ }
+diff --git a/src/transport/audio-convert.ts b/src/transport/audio-convert.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..7d3aa72cced230fa2779e56b854b2cb526414aec
+--- /dev/null
++++ b/src/transport/audio-convert.ts
+@@ -0,0 +1,103 @@
++/**
++ * Audio conversion utilities for browser/local transport.
++ * All functions are pure and stream-chunk friendly.
++ */
++
++const MU_LAW_BIAS = 0x84;
++const MU_LAW_CLIP = 32635;
++
++export function float32ToPcm16(input: Float32Array): Int16Array {
++    const output = new Int16Array(input.length);
++    for (let i = 0; i < input.length; i++) {
++        const clamped = Math.max(-1, Math.min(1, input[i] ?? 0));
++        output[i] = clamped < 0 ? Math.round(clamped * 32768) : Math.round(clamped * 32767);
++    }
++    return output;
++}
++
++export function downsamplePcm16Mono(input: Int16Array, inputSampleRate: number, targetSampleRate: number): Int16Array {
++    if (targetSampleRate > inputSampleRate) {
++        throw new Error(`Target sample rate ${targetSampleRate} cannot exceed input sample rate ${inputSampleRate}`);
++    }
++    if (targetSampleRate === inputSampleRate) {
++        return input;
++    }
++
++    const ratio = inputSampleRate / targetSampleRate;
++    const outputLength = Math.max(1, Math.floor(input.length / ratio));
++    const output = new Int16Array(outputLength);
++
++    let outputIndex = 0;
++    let inputIndex = 0;
++
++    while (outputIndex < outputLength) {
++        const nextInputIndex = Math.min(input.length, Math.floor((outputIndex + 1) * ratio));
++        let sum = 0;
++        let count = 0;
++
++        for (let i = Math.floor(inputIndex); i < nextInputIndex; i++) {
++            sum += input[i] ?? 0;
++            count++;
++        }
++
++        output[outputIndex] = count > 0 ? Math.round(sum / count) : 0;
++        outputIndex++;
++        inputIndex = nextInputIndex;
++    }
++
++    return output;
++}
++
++export function interleavedToMonoPcm16(input: Int16Array, channels: number): Int16Array {
++    if (channels <= 1) {
++        return input;
++    }
++
++    const frames = Math.floor(input.length / channels);
++    const output = new Int16Array(frames);
++
++    for (let frame = 0; frame < frames; frame++) {
++        let sum = 0;
++        for (let channel = 0; channel < channels; channel++) {
++            sum += input[(frame * channels) + channel] ?? 0;
++        }
++        output[frame] = Math.round(sum / channels);
++    }
++
++    return output;
++}
++
++export function pcm16ToMulaw(input: Int16Array): Buffer {
++    const output = Buffer.allocUnsafe(input.length);
++
++    for (let i = 0; i < input.length; i++) {
++        output[i] = linearToMulaw(input[i] ?? 0);
++    }
++
++    return output;
++}
++
++function linearToMulaw(sample: number): number {
++    let pcm = sample;
++    let sign = (pcm >> 8) & 0x80;
++
++    if (sign !== 0) {
++        pcm = -pcm;
++    }
++
++    if (pcm > MU_LAW_CLIP) {
++        pcm = MU_LAW_CLIP;
++    }
++
++    pcm += MU_LAW_BIAS;
++
++    let exponent = 7;
++    for (let expMask = 0x4000; (pcm & expMask) === 0 && exponent > 0; exponent--, expMask >>= 1) {
++        // no-op
++    }
++
++    const mantissa = (pcm >> (exponent + 3)) & 0x0f;
++    const mulaw = ~(sign | (exponent << 4) | mantissa);
++
++    return mulaw & 0xff;
++}
+diff --git a/src/transport/audio-transport.ts b/src/transport/audio-transport.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..5ab07afe243a4a0cef1e74643015bf27e1749e8f
+--- /dev/null
++++ b/src/transport/audio-transport.ts
+@@ -0,0 +1,22 @@
++export interface AudioTransport {
++    /** Send an outbound μ-law 8kHz chunk to the remote peer. */
++    sendAudio(chunk: Buffer): void;
++
++    /** Register callback for inbound μ-law 8kHz caller audio chunks. */
++    onAudio(callback: (chunk: Buffer) => void): void;
++
++    /** Register callback for transport start/metadata event. */
++    onStart(callback: (meta: { streamId: string; callId: string }) => void): void;
++
++    /** Register callback for DTMF digits when available (Twilio only). */
++    onDTMF(callback: (digit: string) => void): void;
++
++    /** Register callback when stream closes. */
++    onClose(callback: () => void): void;
++
++    /** Optional queue clear for barge-in. */
++    clearPlaybackQueue(): void;
++
++    /** Close transport and cleanup sockets/resources. */
++    close(): void;
++}
+diff --git a/src/transport/local-web-transport.ts b/src/transport/local-web-transport.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..49f43855a7b586a0b505e3f7277181777515412f
+--- /dev/null
++++ b/src/transport/local-web-transport.ts
+@@ -0,0 +1,154 @@
++import type WebSocket from 'ws';
++import { randomUUID } from 'crypto';
++import { logger } from '../utils/logger.js';
++import type { AudioTransport } from './audio-transport.js';
++import {
++    downsamplePcm16Mono,
++    float32ToPcm16,
++    interleavedToMonoPcm16,
++    pcm16ToMulaw,
++} from './audio-convert.js';
++
++interface BrowserAudioMessage {
++    type: 'audio';
++    encoding: 'float32' | 'pcm16';
++    sampleRate: number;
++    channels?: number;
++    data: string;
++}
++
++interface BrowserControlMessage {
++    type: 'start' | 'stop' | 'ping' | 'dtmf';
++    digit?: string;
++}
++
++type BrowserInboundMessage = BrowserAudioMessage | BrowserControlMessage;
++
++export class LocalWebTransport implements AudioTransport {
++    private readonly ws: WebSocket;
++    private readonly streamId: string;
++    private readonly localCallId: string;
++
++    private onAudioCallback: (chunk: Buffer) => void = () => { /* noop */ };
++    private onStartCallback: (meta: { streamId: string; callId: string }) => void = () => { /* noop */ };
++    private onDtmfCallback: (digit: string) => void = () => { /* noop */ };
++    private onCloseCallback: () => void = () => { /* noop */ };
++
++    constructor(ws: WebSocket, callId: string) {
++        this.ws = ws;
++        this.streamId = randomUUID();
++        this.localCallId = callId;
++
++        const log = logger.child({ component: 'local-transport', callId });
++
++        this.ws.on('message', (raw: WebSocket.RawData) => {
++            try {
++                const parsed = JSON.parse(raw.toString()) as BrowserInboundMessage;
++                if (parsed.type === 'audio') {
++                    const channels = parsed.channels ?? 1;
++                    const mulaw = this.normalizeBrowserAudioToMulaw(parsed, channels);
++                    this.onAudioCallback(mulaw);
++                    return;
++                }
++
++                if (parsed.type === 'start') {
++                    this.onStartCallback({ streamId: this.streamId, callId: this.localCallId });
++                    return;
++                }
++
++                if (parsed.type === 'stop') {
++                    this.onCloseCallback();
++                    return;
++                }
++
++                if (parsed.type === 'dtmf' && parsed.digit) {
++                    this.onDtmfCallback(parsed.digit);
++                    return;
++                }
++
++                if (parsed.type === 'ping') {
++                    this.ws.send(JSON.stringify({ type: 'pong', ts: Date.now() }));
++                }
++            } catch (error) {
++                log.error({ err: error }, 'Failed to process local browser websocket message');
++            }
++        });
++
++        this.ws.on('close', () => {
++            this.onCloseCallback();
++        });
++
++        this.ws.on('error', (error: Error) => {
++            log.error({ err: error }, 'Local browser websocket error');
++            this.onCloseCallback();
++        });
++
++        // Auto-start to mimic Twilio transport start lifecycle.
++        setImmediate(() => {
++            this.onStartCallback({ streamId: this.streamId, callId: this.localCallId });
++            this.ws.send(JSON.stringify({ type: 'ready', streamId: this.streamId, callId: this.localCallId }));
++        });
++    }
++
++    sendAudio(chunk: Buffer): void {
++        if (this.ws.readyState !== 1) {
++            return;
++        }
++
++        this.ws.send(JSON.stringify({
++            type: 'audio',
++            encoding: 'mulaw',
++            sampleRate: 8000,
++            data: chunk.toString('base64'),
++        }));
++    }
++
++    onAudio(callback: (chunk: Buffer) => void): void {
++        this.onAudioCallback = callback;
++    }
++
++    onStart(callback: (meta: { streamId: string; callId: string }) => void): void {
++        this.onStartCallback = callback;
++    }
++
++    onDTMF(callback: (digit: string) => void): void {
++        this.onDtmfCallback = callback;
++    }
++
++    onClose(callback: () => void): void {
++        this.onCloseCallback = callback;
++    }
++
++    clearPlaybackQueue(): void {
++        if (this.ws.readyState !== 1) {
++            return;
++        }
++
++        this.ws.send(JSON.stringify({ type: 'clear' }));
++    }
++
++    close(): void {
++        if (this.ws.readyState === 1 || this.ws.readyState === 0) {
++            this.ws.close();
++        }
++    }
++
++    private normalizeBrowserAudioToMulaw(message: BrowserAudioMessage, channels: number): Buffer {
++        const sampleRate = message.sampleRate;
++        const raw = Buffer.from(message.data, 'base64');
++
++        let pcm16: Int16Array;
++
++        if (message.encoding === 'float32') {
++            const floats = new Float32Array(raw.buffer, raw.byteOffset, Math.floor(raw.byteLength / 4));
++            pcm16 = float32ToPcm16(floats);
++        } else {
++            pcm16 = new Int16Array(raw.buffer, raw.byteOffset, Math.floor(raw.byteLength / 2));
++        }
++
++        const mono = interleavedToMonoPcm16(pcm16, channels);
++        const downsampled = downsamplePcm16Mono(mono, sampleRate, 8000);
++
++        return pcm16ToMulaw(downsampled);
++    }
++}
+diff --git a/src/transport/twilio-transport.ts b/src/transport/twilio-transport.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..f4ff9131e8e6e3bf8bd2c711c6187ffc5044b866
+--- /dev/null
++++ b/src/transport/twilio-transport.ts
+@@ -0,0 +1,57 @@
++import type WebSocket from 'ws';
++import { TwilioStreamHandler } from '../telephony/twilio-handler.js';
++import type { AudioTransport } from './audio-transport.js';
++
++export class TwilioTransport implements AudioTransport {
++    private readonly handler: TwilioStreamHandler;
++
++    private onAudioCallback: (chunk: Buffer) => void = () => { /* noop */ };
++    private onStartCallback: (meta: { streamId: string; callId: string }) => void = () => { /* noop */ };
++    private onDtmfCallback: (digit: string) => void = () => { /* noop */ };
++    private onCloseCallback: () => void = () => { /* noop */ };
++
++    constructor(ws: WebSocket, callId: string) {
++        this.handler = new TwilioStreamHandler(ws, {
++            onStart: (streamSid, twilioCallSid) => {
++                this.onStartCallback({ streamId: streamSid, callId: twilioCallSid });
++            },
++            onAudio: (audioBuffer) => {
++                this.onAudioCallback(audioBuffer);
++            },
++            onDTMF: (digit) => {
++                this.onDtmfCallback(digit);
++            },
++            onStop: () => {
++                this.onCloseCallback();
++            },
++        }, callId);
++    }
++
++    sendAudio(chunk: Buffer): void {
++        this.handler.sendAudio(chunk.toString('base64'));
++    }
++
++    onAudio(callback: (chunk: Buffer) => void): void {
++        this.onAudioCallback = callback;
++    }
++
++    onStart(callback: (meta: { streamId: string; callId: string }) => void): void {
++        this.onStartCallback = callback;
++    }
++
++    onDTMF(callback: (digit: string) => void): void {
++        this.onDtmfCallback = callback;
++    }
++
++    onClose(callback: () => void): void {
++        this.onCloseCallback = callback;
++    }
++
++    clearPlaybackQueue(): void {
++        this.handler.clearAudioQueue();
++    }
++
++    close(): void {
++        // Lifecycle owned by underlying websocket close; no-op here.
++    }
++}
+diff --git a/src/types/index.ts b/src/types/index.ts
+index b70ab0cc9da04fb80a32febb179e85bb3a41dcd7..b3c6e0db5f3923f1d18e86d2368b51a19404d9db 100644
+--- a/src/types/index.ts
++++ b/src/types/index.ts
+@@ -191,60 +191,64 @@ export type TwilioStreamMessage =
+ 
+ /** Job payload for the post-call Claude worker */
+ export interface CallbackNoteJob {
+     callId: string;
+     transcript: TranscriptTurn[];
+     eligibilityResult: {
+         eligible: boolean;
+         isSalaried: boolean;
+         salary: number | null;
+         location: string | null;
+     };
+     phoneNumber: string;
+ }
+ 
+ /** Structured output from Claude callback note generation */
+ export interface CallbackNote {
+     summary: string;
+     urgency: 'high' | 'medium' | 'low';
+     recommendedAction: string;
+     customerSentiment: 'positive' | 'neutral' | 'negative';
+     notes: string;
+ }
+ 
+ // ─── Application Config ─────────────────────────────────────────
+ 
++
++export type TransportMode = 'local' | 'twilio';
++
+ export interface AppConfig {
+     readonly port: number;
+     readonly host: string;
+     readonly nodeEnv: string;
+     readonly logLevel: string;
++    readonly transportMode: TransportMode;
+     readonly publicUrl: string;
+ 
+     readonly twilio: {
+         readonly accountSid: string;
+         readonly authToken: string;
+         readonly phoneNumber: string;
+-    };
++    } | null;
+ 
+     readonly deepgram: {
+         readonly apiKey: string;
+         readonly model: string;
+         readonly language: string;
+         readonly endpointingMs: number;
+     };
+ 
+     readonly elevenlabs: {
+         readonly apiKey: string;
+         readonly model: string;
+     };
+ 
+     readonly voiceProfile: string;
+     readonly sttConfidenceThreshold: number;
+ 
+     readonly anthropic?: {
+         readonly apiKey: string;
+         readonly model: string;
+     };
+ 
+     readonly metricsEnabled: boolean;
+ }
