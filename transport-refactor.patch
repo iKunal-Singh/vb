@@ -1,65 +1,60 @@
-diff --git a/src/server.ts b/src/server.ts
-index e85a2e217d088f1dcb5f0b2724708d1d5803409e..137409b747b3f798076d6377480bebcde9b660ad 100644
---- a/src/server.ts
-+++ b/src/server.ts
-@@ -1,46 +1,60 @@
- import Fastify from 'fastify';
- import fastifyWebsocket from '@fastify/websocket';
- import { randomUUID } from 'crypto';
- import { config, isLlmEnabled } from './config/index.js';
- import { generateStreamTwiML } from './telephony/twilio-handler.js';
- import { CallSession } from './session/call-session.js';
- import { metrics } from './metrics/collector.js';
- import { logger } from './utils/logger.js';
- import { TwilioTransport } from './transport/twilio-transport.js';
- import { registerDevRoutes } from './dev/dev-routes.js';
+diff --git a/src/transport/local-web-transport.ts b/src/transport/local-web-transport.ts
+index 49f43855a7b586a0b505e3f7277181777515412f..fddeaf2ef4ba5f62a00d88935a49ce3c7c4361e8 100644
+--- a/src/transport/local-web-transport.ts
++++ b/src/transport/local-web-transport.ts
+@@ -61,53 +61,53 @@ export class LocalWebTransport implements AudioTransport {
+                     return;
+                 }
  
- const activeSessions: Map<string, CallSession> = new Map();
+                 if (parsed.type === 'dtmf' && parsed.digit) {
+                     this.onDtmfCallback(parsed.digit);
+                     return;
+                 }
  
- async function buildServer() {
-     const server = Fastify({
-         logger: false,
-         trustProxy: true,
-     });
- 
-     await server.register(fastifyWebsocket);
- 
-+    server.get('/', async (_request, reply) => {
-+        return reply.code(200).send({
-+            status: 'ok',
-+            message: 'QuickRupee voice bot server is running',
-+            endpoints: {
-+                health: '/health',
-+                metrics: '/metrics',
-+                ...(config.transportMode === 'local'
-+                    ? { devClient: '/dev', devAudioSocket: '/dev-audio' }
-+                    : { twiml: '/twiml', mediaStreamSocket: '/media-stream' }),
-+            },
-+        });
-+    });
-+
-     server.get('/health', async (_request, reply) => {
-         return reply.code(200).send({
-             status: 'ok',
-             uptime: process.uptime(),
-             activeCalls: activeSessions.size,
-             timestamp: new Date().toISOString(),
-             transportMode: config.transportMode,
-         });
-     });
- 
-     server.get('/metrics', async (_request, reply) => {
-         const metricsOutput = await metrics.getMetrics();
-         return reply.type(metrics.getContentType()).code(200).send(metricsOutput);
-     });
- 
-     if (config.transportMode === 'twilio') {
-         server.post('/twiml', async (_request, reply) => {
-             logger.info({ event: 'twiml_webhook_hit' });
-             const twiml = generateStreamTwiML(config.publicUrl);
-             return reply.type('text/xml').code(200).send(twiml);
+                 if (parsed.type === 'ping') {
+                     this.ws.send(JSON.stringify({ type: 'pong', ts: Date.now() }));
+                 }
+             } catch (error) {
+                 log.error({ err: error }, 'Failed to process local browser websocket message');
+             }
          });
  
-         server.get('/media-stream', { websocket: true }, (socket) => {
-             const callId = randomUUID();
+         this.ws.on('close', () => {
+             this.onCloseCallback();
+         });
+ 
+         this.ws.on('error', (error: Error) => {
+             log.error({ err: error }, 'Local browser websocket error');
+             this.onCloseCallback();
+         });
+ 
+-        // Auto-start to mimic Twilio transport start lifecycle.
++        // Let the browser explicitly send a `start` control message once
++        // media permissions are granted and the audio graph is ready.
+         setImmediate(() => {
+-            this.onStartCallback({ streamId: this.streamId, callId: this.localCallId });
+             this.ws.send(JSON.stringify({ type: 'ready', streamId: this.streamId, callId: this.localCallId }));
+         });
+     }
+ 
+     sendAudio(chunk: Buffer): void {
+         if (this.ws.readyState !== 1) {
+             return;
+         }
+ 
+         this.ws.send(JSON.stringify({
+             type: 'audio',
+             encoding: 'mulaw',
+             sampleRate: 8000,
+             data: chunk.toString('base64'),
+         }));
+     }
+ 
+     onAudio(callback: (chunk: Buffer) => void): void {
+         this.onAudioCallback = callback;
+     }
+ 
+     onStart(callback: (meta: { streamId: string; callId: string }) => void): void {
+         this.onStartCallback = callback;
+     }
  
