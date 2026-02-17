@@ -19,6 +19,20 @@ async function buildServer() {
 
     await server.register(fastifyWebsocket);
 
+    server.get('/', async (_request, reply) => {
+        return reply.code(200).send({
+            status: 'ok',
+            message: 'QuickRupee voice bot server is running',
+            endpoints: {
+                health: '/health',
+                metrics: '/metrics',
+                ...(config.transportMode === 'local'
+                    ? { devClient: '/dev', devAudioSocket: '/dev-audio' }
+                    : { twiml: '/twiml', mediaStreamSocket: '/media-stream' }),
+            },
+        });
+    });
+
     server.get('/health', async (_request, reply) => {
         return reply.code(200).send({
             status: 'ok',
