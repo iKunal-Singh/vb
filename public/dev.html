@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Voice Bot Local Dev Harness</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 12px; }
+    .row { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+    button { padding: 10px 14px; font-size: 14px; cursor: pointer; }
+    #status { font-weight: 700; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-top: 12px; }
+    code { background: #f2f2f2; padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Local Streaming Voice Harness</h1>
+  <div class="row">
+    <button id="startBtn">Start</button>
+    <button id="stopBtn" disabled>Stop</button>
+    <div>Status: <span id="status">idle</span></div>
+  </div>
+
+  <div class="card">
+    <div>WS RTT: <span id="rtt">-</span> ms</div>
+    <div>Last TTS chunk at: <span id="ttsTs">-</span></div>
+    <div>Input sample rate: <span id="inputRate">-</span></div>
+    <div>Sent frames: <span id="sentFrames">0</span></div>
+    <div>Received TTS chunks: <span id="recvChunks">0</span></div>
+  </div>
+
+  <script>
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const statusEl = document.getElementById('status');
+    const rttEl = document.getElementById('rtt');
+    const ttsTsEl = document.getElementById('ttsTs');
+    const inputRateEl = document.getElementById('inputRate');
+    const sentFramesEl = document.getElementById('sentFrames');
+    const recvChunksEl = document.getElementById('recvChunks');
+
+    let ws = null;
+    let stream = null;
+    let audioContext = null;
+    let mediaSource = null;
+    let processor = null;
+
+    let playbackCtx = null;
+    let playbackQueueTime = 0;
+
+    let sentFrames = 0;
+    let recvChunks = 0;
+    let pingInterval = null;
+
+    function setStatus(v) { statusEl.textContent = v; }
+
+    function downsampleFloat32To8k(input, sampleRate) {
+      if (sampleRate === 8000) return input;
+      const ratio = sampleRate / 8000;
+      const outLength = Math.max(1, Math.floor(input.length / ratio));
+      const out = new Float32Array(outLength);
+      let inPos = 0;
+      for (let i = 0; i < outLength; i++) {
+        const nextInPos = Math.min(input.length, Math.floor((i + 1) * ratio));
+        let sum = 0;
+        let count = 0;
+        for (let j = Math.floor(inPos); j < nextInPos; j++) {
+          sum += input[j] || 0;
+          count++;
+        }
+        out[i] = count > 0 ? sum / count : 0;
+        inPos = nextInPos;
+      }
+      return out;
+    }
+
+    function floatToPcm16(floatData) {
+      const out = new Int16Array(floatData.length);
+      for (let i = 0; i < floatData.length; i++) {
+        const s = Math.max(-1, Math.min(1, floatData[i] || 0));
+        out[i] = s < 0 ? Math.round(s * 32768) : Math.round(s * 32767);
+      }
+      return out;
+    }
+
+    function pcm16ToBase64(pcm16) {
+      const bytes = new Uint8Array(pcm16.buffer);
+      let bin = '';
+      const chunkSize = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        const sub = bytes.subarray(i, i + chunkSize);
+        bin += String.fromCharCode(...sub);
+      }
+      return btoa(bin);
+    }
+
+    function base64ToBytes(base64) {
+      const bin = atob(base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return bytes;
+    }
+
+    function mulawByteToPcm16(muLawByte) {
+      const MULAW_BIAS = 0x84;
+      let u = (~muLawByte) & 0xff;
+      const sign = u & 0x80;
+      const exponent = (u >> 4) & 0x07;
+      const mantissa = u & 0x0f;
+      let sample = ((mantissa << 3) + MULAW_BIAS) << exponent;
+      sample -= MULAW_BIAS;
+      return sign ? -sample : sample;
+    }
+
+    function decodeMulawToFloat32(bytes) {
+      const out = new Float32Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) {
+        const pcm = mulawByteToPcm16(bytes[i]);
+        out[i] = pcm / 32768;
+      }
+      return out;
+    }
+
+    function schedulePlayback(float32, sampleRate = 8000) {
+      if (!playbackCtx) {
+        playbackCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate });
+      }
+
+      const buffer = playbackCtx.createBuffer(1, float32.length, sampleRate);
+      buffer.copyToChannel(float32, 0);
+
+      const src = playbackCtx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(playbackCtx.destination);
+
+      const now = playbackCtx.currentTime;
+      if (playbackQueueTime < now + 0.03) {
+        playbackQueueTime = now + 0.03;
+      }
+      src.start(playbackQueueTime);
+      playbackQueueTime += buffer.duration;
+    }
+
+    function flushPlaybackQueue() {
+      playbackQueueTime = playbackCtx ? playbackCtx.currentTime : 0;
+    }
+
+    async function start() {
+      if (ws) return;
+      setStatus('connecting');
+
+      playbackCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+      const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+      ws = new WebSocket(`${wsProto}://${location.host}/dev-audio`);
+
+      ws.onopen = async () => {
+        setStatus('connected');
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+
+        ws.send(JSON.stringify({ type: 'start' }));
+
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        inputRateEl.textContent = String(audioContext.sampleRate);
+
+        mediaSource = audioContext.createMediaStreamSource(stream);
+        processor = audioContext.createScriptProcessor(2048, 1, 1);
+
+        processor.onaudioprocess = (event) => {
+          if (!ws || ws.readyState !== WebSocket.OPEN) return;
+          const input = event.inputBuffer.getChannelData(0);
+          const down = downsampleFloat32To8k(input, audioContext.sampleRate);
+          const pcm16 = floatToPcm16(down);
+
+          ws.send(JSON.stringify({
+            type: 'audio',
+            encoding: 'pcm16',
+            sampleRate: 8000,
+            channels: 1,
+            data: pcm16ToBase64(pcm16),
+          }));
+
+          sentFrames++;
+          sentFramesEl.textContent = String(sentFrames);
+        };
+
+        mediaSource.connect(processor);
+        processor.connect(audioContext.destination);
+
+        pingInterval = setInterval(() => {
+          if (!ws || ws.readyState !== WebSocket.OPEN) return;
+          ws.send(JSON.stringify({ type: 'ping' }));
+        }, 1000);
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+
+        if (msg.type === 'audio' && msg.encoding === 'mulaw') {
+          const bytes = base64ToBytes(msg.data);
+          const float32 = decodeMulawToFloat32(bytes);
+          schedulePlayback(float32, msg.sampleRate || 8000);
+
+          recvChunks++;
+          recvChunksEl.textContent = String(recvChunks);
+          ttsTsEl.textContent = new Date().toLocaleTimeString();
+          return;
+        }
+
+        if (msg.type === 'clear') {
+          flushPlaybackQueue();
+          return;
+        }
+
+        if (msg.type === 'pong' && msg.ts) {
+          const now = Date.now();
+          rttEl.textContent = String(Math.max(0, now - msg.ts));
+        }
+      };
+
+      ws.onerror = () => {
+        setStatus('error');
+      };
+
+      ws.onclose = () => {
+        cleanup();
+        setStatus('closed');
+      };
+    }
+
+    function cleanup() {
+      if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = null;
+      }
+
+      if (processor) {
+        processor.disconnect();
+        processor.onaudioprocess = null;
+        processor = null;
+      }
+
+      if (mediaSource) {
+        mediaSource.disconnect();
+        mediaSource = null;
+      }
+
+      if (audioContext) {
+        audioContext.close();
+        audioContext = null;
+      }
+
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
+        stream = null;
+      }
+
+      if (ws) {
+        try { ws.close(); } catch {}
+        ws = null;
+      }
+
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    }
+
+    startBtn.addEventListener('click', () => {
+      start().catch((err) => {
+        console.error(err);
+        setStatus('start_failed');
+      });
+    });
+
+    stopBtn.addEventListener('click', () => {
+      cleanup();
+      setStatus('stopped');
+    });
+  </script>
+</body>
+</html>

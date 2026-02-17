@@ -213,18 +213,22 @@ export interface CallbackNote {
 
 // ─── Application Config ─────────────────────────────────────────
 
+
+export type TransportMode = 'local' | 'twilio';
+
 export interface AppConfig {
     readonly port: number;
     readonly host: string;
     readonly nodeEnv: string;
     readonly logLevel: string;
+    readonly transportMode: TransportMode;
     readonly publicUrl: string;
 
     readonly twilio: {
         readonly accountSid: string;
         readonly authToken: string;
         readonly phoneNumber: string;
-    };
+    } | null;
 
     readonly deepgram: {
         readonly apiKey: string;
