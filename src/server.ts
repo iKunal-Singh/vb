@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import fastifyWebsocket from '@fastify/websocket';
+import fastifyFormbody from '@fastify/formbody';
 import { randomUUID } from 'crypto';
 import { config, isLlmEnabled } from './config/index.js';
 import { generateStreamTwiML } from './telephony/twilio-handler.js';
@@ -18,6 +19,7 @@ async function buildServer() {
     });
 
     await server.register(fastifyWebsocket);
+    await server.register(fastifyFormbody);
 
     server.get('/', async (_request, reply) => {
         return reply.code(200).send({
